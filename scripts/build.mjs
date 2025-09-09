@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { build } from 'esbuild';
+import * as esbuild from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import dotenv from 'dotenv';
@@ -18,7 +18,7 @@ const watch = process.argv.includes('--watch');
 
 async function run() {
   try {
-    await build({
+    const common = {
       entryPoints: ['app/src/main.js'],
       bundle: true,
       format: 'esm',
@@ -28,11 +28,17 @@ async function run() {
       define,
       chunkNames: 'chunks/[name]-[hash]',
       assetNames: 'assets/[name]-[hash]',
-      entryNames: '[name]-[hash]',
+      entryNames: 'main',
       minify: true,
-      incremental: watch,
       logLevel: 'info'
-    });
+    };
+    if (watch) {
+      const ctx = await esbuild.context(common);
+      await ctx.watch();
+      console.log('[watch] build watching for changes...');
+    } else {
+      await esbuild.build(common);
+    }
     if (!process.env.TD2_GOOGLE_CLIENT_ID) {
       console.warn('\n[warn] TD2_GOOGLE_CLIENT_ID not set. The app will not authenticate properly until provided.');
     }

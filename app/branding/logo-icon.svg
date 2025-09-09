@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img"
+  aria-labelledby="title desc">
+  <title id="title">Tiddly Drive 2 Icon</title>
+  <desc id="desc">Rounded blue square with a stylised document and two horizontal lines representing a wiki page.</desc>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#1D60D8" />
+    </linearGradient>
+  </defs>
+  <!-- Outer rounded square -->
+  <rect x="48" y="48" width="416" height="416" rx="96" fill="url(#g)" />
+  <!-- Inner document with folded corner -->
+  <path id="doc" fill="#FFFFFF"
+    d="M188 136c-14.9 0-28 13.1-28 28v184c0 15.5 12.5 28 28 28h136c15.5 0 28-12.5 28-28V212l-76-76H188zm156 76h-48c-15.5 0-28-12.5-28-28v-48l76 76z" />
+  <!-- Visible text lines (slightly darker to contrast with white page) -->
+  <rect x="228" y="250" width="104" height="28" rx="14" fill="#1D60D8" opacity="0.28" />
+  <rect x="228" y="300" width="104" height="28" rx="14" fill="#1D60D8" opacity="0.20" />
+</svg>
