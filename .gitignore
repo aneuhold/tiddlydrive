@@ -2,3 +2,6 @@
 _site*
 .*
 !.gitignore
+node_modules
+app/dist
+

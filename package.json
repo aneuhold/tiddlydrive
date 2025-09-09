@@ -1,0 +1,14 @@
+{
+  "name": "tiddly-drive-2-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Modernized Tiddly Drive 2 Google Drive app integration",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5",
+    "esbuild": "^0.21.5"
+  }
+}

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title id="top-title">Tiddly Drive</title>
+  <title id="top-title">Tiddly Drive 2</title>
     <meta charset='utf-8' />
     <link type="text/css" rel="stylesheet" href="./rec/index.css"/>
     <link rel="stylesheet" href="./lib/materialize.min.css">
@@ -11,11 +11,10 @@
     <script src="./lib/jquery.min.js"></script>
     <script src="./lib/jquery.qrcode.min.js"></script>
     <script src="./lib/materialize.min.js"></script>
-    <script type="text/javascript" src="./rec/index.js"></script>
-    <script async defer src="https://apis.google.com/js/api.js"
-      onload="this.onload=function(){};handleClientLoad()"
-      onreadystatechange="if (this.readyState === 'complete') this.onload()">
-    </script>
+  <!-- Legacy script removed: using Google Identity Services now -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="./dist/main.js" defer></script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://img.shields.io https://www.payfast.co.za; connect-src https://www.googleapis.com; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://www.payfast.co.za;">
     <meta name="viewport" content="width=device-width, initial-scale=1">
   <template id="news_row">
 
@@ -76,7 +75,7 @@
     <div id="settings" class="modal modal-fixed-footer">
       <div class="modal-content">
         <br style="display: block;line-height: 100px;">
-        <h4 class="z-depth-1 floating-title">Tiddly Drive Settings<br>
+  <h4 class="z-depth-1 floating-title">Tiddly Drive 2 Settings<br>
          <img src="https://img.shields.io/github/tag/tiddlydrive/development.svg" style="max-width:100%;" class="dev">
          <img src="https://img.shields.io/github/tag/tiddlydrive/tiddlydrive.github.io.svg" style="max-width:100%;" class="prod">
         </h4> 
@@ -113,6 +112,11 @@
                   <div class="col s12 tooltipped" data-position="bottom" data-delay="50" data-tooltip="Override the save-to-drive functionality and save normally">
                     <input type="checkbox" id="disable-save" checked="unchecked" />
                     <label for="disable-save">Use download saver</label>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="col s12">
+                    <a class="waves-effect waves-light btn" id="save-now">Save Now</a>
                   </div>
                 </div>
                 <div class="row">
