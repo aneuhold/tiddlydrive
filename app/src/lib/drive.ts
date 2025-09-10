@@ -1,5 +1,5 @@
-import { getAccessToken } from './auth';
-import { showError, showToast } from './ui';
+import { getAccessToken } from './auth.js';
+import { showError, showToast } from './ui.js';
 
 let currentFileId: string | null = null;
 let currentFileName = 'wiki.html';

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getAccessToken, initAuth } from '$lib/td2/auth';
-  import { loadFile, parseState, save } from '$lib/td2/drive';
-  import { showToast } from '$lib/td2/ui';
+  import { getAccessToken, initAuth } from '$lib/auth';
+  import { loadFile, parseState, save } from '$lib/drive';
+  import { showToast } from '$lib/ui';
   import { onMount } from 'svelte';
 
   let iframeEl: HTMLIFrameElement;
@@ -139,7 +139,7 @@
       </p>
     </div>
   {:else}
-    <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame" />
+    <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
   {/if}
   <aside class="panel">
     <h3>Settings</h3>
