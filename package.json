@@ -4,9 +4,11 @@
   "private": true,
   "description": "Modernized Tiddly Drive 2 Google Drive app integration",
   "scripts": {
-    "i": "pnpm i && cd info-site && pnpm i",
     "build": "node scripts/build.mjs",
-    "dev": "node scripts/build.mjs --watch",
+    "dev:app": "node scripts/build.mjs --watch",
+    "dev:site": "pnpm --dir info-site dev",
+    "dev:all": "concurrently -n app,site -c cyan,magenta \"pnpm dev:app\" \"pnpm dev:site\"",
+    "dev": "pnpm dev:all",
     "icons:clean": "rm -rf app/branding/png && mkdir -p app/branding/png",
     "icons:single": "rsvg-convert -w $WIDTH -h $WIDTH app/branding/logo-icon.svg > app/branding/png/icon-$WIDTH.png",
     "icons:full": "rsvg-convert -w 1024 app/branding/logo-full.svg > app/branding/png/logo-full-1024.png && rsvg-convert -w 1024 app/branding/logo-full-inverted.svg > app/branding/png/logo-full-inverted-1024.png",
@@ -14,9 +16,8 @@
     "assets": "pnpm run build && pnpm run icons:all"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "dotenv": "^16.4.5",
-    "esbuild": "^0.21.5",
-    "eslint": "^9.35.0",
-    "prettier": "^3.6.2"
+    "esbuild": "^0.21.5"
   }
 }
