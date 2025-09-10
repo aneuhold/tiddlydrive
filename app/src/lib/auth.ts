@@ -1,6 +1,5 @@
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-// Client ID injected via Vite env mapping from root TD2_GOOGLE_CLIENT_ID
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
 
 // Using loose typing to avoid needing full GIS type package
 let tokenClient: any | null = null;
@@ -31,14 +30,6 @@ function waitForGoogleIdentity(): Promise<void> {
  *
  */
 export async function initAuth() {
-  if (!CLIENT_ID) {
-    console.warn(
-      '[td2/auth] Missing VITE_GOOGLE_CLIENT_ID. Check that:\n' +
-        ' 1) info-site/.env contains VITE_GOOGLE_CLIENT_ID=...\n' +
-        ' 2) Dev server was restarted after adding it\n' +
-        ' 3) No conflicting define removed it in vite.config.js'
-    );
-  }
   await waitForGoogleIdentity();
   tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
