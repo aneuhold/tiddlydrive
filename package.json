@@ -2,7 +2,7 @@
   "name": "tiddly-drive-2-app",
   "version": "0.1.0",
   "private": true,
-  "license": "MIT",
+  "license": "GNU",
   "description": "Modernized Tiddly Drive 2 Google Drive app integration",
   "scripts": {
     "build": "node scripts/build.mjs && cd ./info-site && pnpm run build",

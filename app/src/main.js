@@ -1,7 +1,7 @@
 // main.js - entry point
-import { initAuth, getAccessToken } from './auth.js';
+import { getAccessToken, initAuth } from './auth.js';
 import { loadFileIntoIframe, saveContent } from './drive.js';
-import { showToast, parseStateParam } from './ui.js';
+import { parseStateParam } from './ui.js';
 
 function readCookie(name) {
   const nameEQ = name + '=';
@@ -91,12 +91,33 @@ function registerTiddlySaver(iframe) {
   }
 }
 
+function initMaterializeShell() {
+  // Initialize Materialize components if library loaded
+  if (window.$) {
+    window.$('.modal').modal({
+      ready: function() {
+        if (window.$('ul.tabs').tabs) window.$('ul.tabs').tabs('select_tab', 'options');
+      }
+    });
+    if (window.$('ul.tabs').tabs) window.$('ul.tabs').tabs();
+    const hideFab = document.getElementById('hide-fab');
+    if (hideFab) hideFab.addEventListener('click', () => {
+      const btn = document.getElementById('open-settings');
+      if (btn) btn.style.display = 'none';
+    });
+  }
+  // Auth button triggers interactive token fetch
+  const authBtn = document.getElementById('auth');
+  if (authBtn) authBtn.addEventListener('click', () => getAccessToken({ interactive: true }));
+}
+
 async function bootstrap() {
   const iframe = document.getElementById('content');
   const loader = document.getElementById('loader');
   const noFileMsg = document.getElementById('nofile-msg');
   const errorMsg = document.getElementById('error-msg');
   const state = parseStateParam();
+  initMaterializeShell();
   try {
     await initAuth();
     if (!state) {

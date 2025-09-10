@@ -3,7 +3,8 @@
   <head>
   <title id="top-title">Tiddly Drive 2</title>
     <meta charset='utf-8' />
-    <link type="text/css" rel="stylesheet" href="./rec/index.css"/>
+  <link type="text/css" rel="stylesheet" href="./rec/index.css"/>
+  <!-- Primary application styles come from legacy Materialize + custom CSS. Consider gradual migration away from jQuery/Materialize later. -->
     <link rel="stylesheet" href="./lib/materialize.min.css">
     <link rel="stylesheet" href="./lib/icon.css">
     <link rel="stylesheet" href="./lib/btcdonate.css">
@@ -13,6 +14,7 @@
     <script src="./lib/materialize.min.js"></script>
   <!-- Legacy script removed: using Google Identity Services now -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Main bundled ES module (built by esbuild at app/dist/main.js) -->
   <script type="module" src="./dist/main.js" defer></script>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://img.shields.io https://www.payfast.co.za; connect-src https://www.googleapis.com; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self' https://www.payfast.co.za;">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -37,17 +39,17 @@
   </template>
   </head>
   <body>
-    <div class="modal-content grey-text text-darken-2" id="error-msg">
+    <div class="modal-content grey-text text-darken-2" id="error-msg" style="display:none">
       <h1>There was an error downloading the file</h1>
     </div>
-    <div class="modal-content grey-text text-darken-3" id="nofile-msg">
-      <h3>Open a file from <a href="http://drive.google.com">Google Drive <img src="./img/drive-logo.png"></a> by adding the Tiddly Drive addon.</h3>
-      <p>For detailed instructions to install, check the <a href="https://lordratte.gitlab.io/tiddlydrive">info page</a></p>
+    <div class="modal-content grey-text text-darken-3" id="nofile-msg" style="display:none">
+      <h3>Open a file from <a href="https://drive.google.com" rel="noopener noreferrer">Google Drive <img src="./img/drive-logo.png" alt="Drive"></a> by adding the Tiddly Drive 2 integration.</h3>
+      <p>Installation & help: <a href="https://tiddlydrive.tonyneuhold.com" target="_blank" rel="noopener noreferrer">Project Site</a></p>
     </div>
     <div class="progress" id="loader">
         <div class="indeterminate"></div>
     </div>
-    <iframe id="content" src="about:blank"></iframe>
+  <iframe id="content" src="about:blank" title="TiddlyWiki Document" style="width:100%;border:0;min-height:80vh"></iframe>
     <div class="fixed-action-btn">
       <a id="open-settings" class="btn-floating btn-large modal-trigger waves-effect waves-light grey" href="#settings"><i class="material-icons">settings</i></a>
     </div>
@@ -193,9 +195,11 @@
         </p>
       </div>
       <div class="modal-footer">
-        <a id="hide-fab" class="modal-action modal-close waves-effect waves-green btn-flat">Hide settings button until next reload</a>
+    <a id="hide-fab" class="modal-action modal-close waves-effect waves-green btn-flat">Hide settings button until next reload</a>
         <a class="modal-action modal-close waves-effect waves-green btn-flat">Close</a>
       </div>
     </div>
+  <!-- Placeholder for toasts if Materialize not present -->
+  <div id="toast-container" style="position:fixed;bottom:1rem;right:1rem;z-index:9999"></div>
   </body>
 </html>

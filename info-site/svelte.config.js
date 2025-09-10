@@ -17,7 +17,8 @@ const config = {
     }),
     alias: {
       $shared: 'shared',
-      $components: 'src/components'
+      $components: 'src/components',
+      $lib: 'src/lib',
     }
   },
   extensions: ['.svelte']

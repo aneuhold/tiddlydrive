@@ -47,22 +47,44 @@ Acceptance Criteria:
 
 ## 2. Hosting & Domains
 
-Current hosting: GitHub Pages. Options:
-A. Keep GitHub Pages (`https://<user>.github.io/tiddlydrive2/`) and verify domain for OAuth consent.
-B. Add custom domain (e.g., `tiddlydrive2.app` or subdomain) for stronger branding (optional).
+Chosen Approach: GitHub Pages + existing apex domain `tonyneuhold.com` using a dedicated subdomain `tiddlydrive.tonyneuhold.com` for the application and its required public policy/support documents.
 
-Tasks:
+Rationale:
 
-1. Decide hosting path (fastest: GitHub Pages). Create new repo `tiddlydrive2.github.io` or reuse existing with `/` root.
-2. If custom domain: purchase & configure DNS (A / CNAME), add DNS TXT record for Google Search Console & domain verification.
-3. Ensure HTTPS enforced.
-4. Add `/privacy.html`, `/terms.html`, `/support.html` pages.
-5. Confirm static asset caching & immutable file naming for JS/CSS (add content hashes if build pipeline is introduced).
+- A single, purpose‑specific subdomain keeps OAuth & Marketplace review simpler (one origin) while preserving separation from unrelated personal content on the apex.
+- Avoids need for two domains (no security benefit in this purely static, client‑only model right now).
+
+Resulting Public URLs (planned):
+
+- App root / Drive "Open with" launch: `https://tiddlydrive.tonyneuhold.com/`
+- Privacy Policy: `https://tiddlydrive.tonyneuhold.com/privacy.html`
+- Terms of Service: `https://tiddlydrive.tonyneuhold.com/terms.html`
+- Support: `https://tiddlydrive.tonyneuhold.com/support.html` (or redirect to GitHub Issues)
+
+DNS & GitHub Pages Tasks:
+
+1. Add `CNAME` record in DNS: `tiddlydrive` -> `<username>.github.io` (your GitHub Pages target) or configure Pages custom domain settings accordingly.
+2. (If not already) Add/confirm `A` / `ALIAS` records for apex separately (not strictly required for the app; focus is subdomain).
+3. Create / update `CNAME` file in the Pages publishing branch (or root) containing `tiddlydrive.tonyneuhold.com`.
+4. Enable HTTPS & enforce it in GitHub Pages settings (automatic certificate via Let's Encrypt).
+5. Add DNS TXT record for Google Search Console domain property verification (either apex or subdomain—subdomain is sufficient for OAuth domain verification if used consistently).
+6. Add `/privacy.html`, `/terms.html`, `/support.html` to the deployed site (static, no tracking scripts).
+7. Confirm caching headers for built assets (hashed filenames via build pipeline Section 7). If using plain root without build yet, plan migration before public listing.
+8. (Optional) Configure a short redirect or canonical tag if any legacy URLs persist.
+
+OAuth / Marketplace Considerations:
+
+- Authorized JavaScript Origin will include: `https://tiddlydrive.tonyneuhold.com` and local dev `http://localhost:5173`.
+- Do NOT add the apex `https://tonyneuhold.com` unless the app actually runs there (keeps scope of review tight).
+- Privacy & Terms must resolve without redirects failing CSP (avoid meta refresh; use direct pages).
 
 Acceptance Criteria:
 
-- Public URL chosen & accessible.
-- Domain verified in Google Cloud Console (if custom or non-GitHub root).
+- `https://tiddlydrive.tonyneuhold.com` resolves with HTTPS enforced (no mixed content, valid cert).
+- CNAME / DNS propagation verified (nslookup / dig) and Pages shows “Domain is verified”.
+- Domain (subdomain) verified in Google Cloud Console / Search Console for OAuth consent screen.
+- Policy, Terms, Support pages publicly accessible over HTTPS at stated URLs.
+- Asset build (once implemented) produces hashed filenames or documented plan to do so before release.
 
 ---
 
@@ -80,14 +102,20 @@ Tasks:
    - Add app logo (≤1MB), support email, developer contact.
    - Provide detailed justification for scope (explain single‑file editing, no broad drive access, no server storage).
 4. Create OAuth 2.0 Client ID (Web application):
-   - Authorized JavaScript origins: production host + dev host (e.g., `http://localhost:5173` if adding a dev server, and GitHub Pages URL).
-   - Authorized redirect URIs: For GIS popup/redirect (if using redirect mode). If using token client with popup, explicit redirect not always necessary (still add fallback redirect page if needed).
+   - Authorized JavaScript origins:
+     - `https://tiddlydrive.tonyneuhold.com`
+     - `http://localhost:5173` (dev / Vite preview)
+     - (Optional later) staging origin if introduced (add only when real).
+   - Authorized redirect URIs: If using GIS OAuth 2.0 code flow or fallback redirect, add `https://tiddlydrive.tonyneuhold.com/oauth-callback.html` (placeholder) — not strictly required for token client popup flow but harmless for future flexibility.
+   - Do NOT list apex domain unless serving app from there to reduce review surface.
 5. (If still needed) API Key – in modern approach w/ OAuth token only, an API key is unnecessary; plan to remove.
 6. Configure Google Workspace Marketplace SDK:
    - Enable in GCP.
-   - Add Drive integration (Open with): specify MIME types: `text/html` and optionally `application/x-tiddlywiki` (if you standardize) and detect single-file format.
-   - App launch URL: production root with query parameter pattern expected by state object.
-   - Test publication in private mode for selected test users.
+   - Add Drive integration (Open with): specify MIME types: `text/html` and optionally custom `application/x-tiddlywiki`.
+   - App launch URL: `https://tiddlydrive.tonyneuhold.com/` (Drive will append `?state=...`).
+   - Support URL: `https://tiddlydrive.tonyneuhold.com/support.html` (or GitHub Issues if preferred; ensure alignment with consent screen support link).
+   - Privacy & Terms URLs: point to subdomain pages (match consent screen exactly to avoid review friction).
+   - Test publication in private mode for selected test users (add their emails under OAuth Testing users list).
 
 Acceptance Criteria:
 
@@ -403,10 +431,14 @@ Success = A user can install "Tiddly Drive 2" from the Google Workspace Marketpl
 
 ## 21. Next Immediate Steps (Action Kickoff)
 
-1. Confirm hosting choice & create new GitHub repo (if not reusing this one).
-2. Create Google Cloud project & OAuth consent screen in Testing mode.
-3. Generate new OAuth Client ID & add placeholder to local `.env`.
-4. Begin auth refactor (Section 5) before other UI changes.
+1. Configure DNS: Add CNAME for `tiddlydrive.tonyneuhold.com` -> `<username>.github.io` and create `CNAME` file in repo.
+2. Wait for DNS propagation; verify HTTPS on the subdomain via GitHub Pages settings.
+3. Verify subdomain in Google Search Console (TXT record) and confirm domain ownership inside Google Cloud Console.
+4. Create Google Cloud project & OAuth consent screen (Testing mode) using the subdomain URLs for Privacy, Terms, Support (temporary placeholder content acceptable initially, finalize later Section 12).
+5. Generate OAuth Client ID; place client id in local `.env` as `VITE_GOOGLE_CLIENT_ID=` (do not commit real value) and reference in build.
+6. Begin auth refactor (Section 5) migrating from `gapi` to GIS token client.
+7. Implement Drive v3 fetch & multipart save (Section 6) before UX polish.
+8. Add placeholder `privacy.html`, `terms.html`, `support.html` early to avoid broken consent screen links.
 
 ---
 

@@ -10,13 +10,7 @@ const viteConfig = defineConfig({
     alias: {
       src: path.resolve('./src')
     },
-    // Tell Vitest to use the `browser` entry points in `package.json` files, even though it's running in Node
     conditions: process.env.VITEST ? ['browser'] : undefined
-  },
-  server: {
-    fs: {
-      allow: ['shared']
-    }
   }
 });
 
@@ -32,4 +26,3 @@ export default {
   ...viteConfig,
   ...vitestConfig
 };
-
