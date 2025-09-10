@@ -1,0 +1,49 @@
+name: "Pull Request Actions"
+
+on:
+  pull_request:
+    # Only initiate the workflow when a PR is opened, or committed to.
+    branches:
+      - main
+
+jobs:
+  testAndDeploy:
+    name: "Test and Deploy"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PNPM
+        uses: pnpm/action-setup@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+          cache: "pnpm"
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            app/pnpm-lock.yaml
+
+      - name: Install dependencies (root, svelte)
+        run: pnpm run i
+
+      - name: Build the svelte site
+        run: pnpm build
+
+      - name: Deploy to Netlify
+        uses: nwtgck/actions-netlify@v3.0
+        with:
+          publish-dir: "./app/build"
+          production-branch: main
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "${{ github.event.pull_request.title }} Deploy Preview"
+          enable-pull-request-comment: false
+          enable-commit-comment: false
+          overwrites-pull-request-comment: false
+          github-deployment-description: "Netlify Deploy Preview"
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        timeout-minutes: 1

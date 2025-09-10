@@ -1,0 +1,124 @@
+/* Defining the variables as CSS variables first allows for the variables
+   to show up in dev tools when viewing the actual site */
+:root {
+  --color-text-primary: rgba(0, 0, 0, 0.87);
+  --color-text-secondary: rgba(0, 0, 0, 0.6);
+
+  --color-primary: hsla(164, 95%, 28%, 1);
+  --color-primary-300: hsl(from var(--color-primary) h s l / 0.5);
+  --color-primary-100: hsl(from var(--color-primary) h s l / 0.08);
+  --color-secondary: hsla(78, 6%, 43%, 1);
+  --color-accent: hsla(19, 97%, 65%, 1);
+  --color-accent-light: hsla(19, 97%, 75%, 0.3);
+  --color-shadow: rgba(0, 0, 0, 0.12);
+  --color-shadow-light: rgba(0, 0, 0, 0.06);
+
+  --standard-spacing: 8px;
+  --background: #fff;
+
+  --mint-green: hsla(180, 100%, 90%, 1);
+}
+
+html {
+  font-family: 'Roboto', sans-serif;
+  color: var(--color-text-primary);
+  background: linear-gradient(
+    135deg,
+    hsla(180, 100%, 88%, 1) 0%,
+    hsla(19, 97%, 70%, 0.8) 50%,
+    hsla(164, 95%, 85%, 0.9) 100%
+  );
+  text-align: center;
+  min-height: 100vh;
+}
+
+/* A lot of the below styles are pulled from the react version of Material UI */
+
+.header-2 {
+  font-weight: 300;
+  font-size: 3.75rem;
+  line-height: 1.2;
+  letter-spacing: -0.00833em;
+  margin-bottom: 0.35em;
+}
+
+.header-4 {
+  font-weight: 400;
+  font-size: 1.5rem;
+  line-height: 1.334;
+  letter-spacing: 0em;
+}
+
+.header-6 {
+  line-height: 1.6;
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: 0.0075em;
+}
+
+.subtitle-1 {
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.75;
+  letter-spacing: 0.00938em;
+}
+
+.button-text {
+  text-transform: uppercase;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  letter-spacing: 0.02857em;
+}
+
+/* Primary action button (anchors or buttons) */
+.primary-btn {
+  --btn-base: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--btn-base);
+  color: #fff;
+  padding: 0.6rem 1.3rem 0.55rem;
+  border-radius: 999px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  box-shadow:
+    0 2px 6px -1px var(--color-shadow),
+    0 1px 2px var(--color-shadow-light);
+  transition:
+    filter 160ms ease,
+    transform 160ms ease,
+    box-shadow 200ms ease;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  position: relative;
+}
+.primary-btn:hover,
+.primary-btn:focus-visible {
+  filter: brightness(1.12) saturate(1.05);
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 10px -2px var(--color-shadow),
+    0 2px 4px var(--color-shadow-light);
+}
+.primary-btn:active {
+  filter: brightness(0.92) saturate(1.05);
+  transform: translateY(0);
+  box-shadow:
+    0 2px 4px -1px var(--color-shadow),
+    0 1px 2px var(--color-shadow-light);
+}
+.primary-btn:focus-visible {
+  outline: 2px solid var(--color-primary-100);
+  outline-offset: 2px;
+}
+.primary-btn:disabled,
+.primary-btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
