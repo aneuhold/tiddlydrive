@@ -1,4 +1,4 @@
-name: 'Main Branch Actions'
+name: "Main Branch Actions"
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    name: 'Deploy'
+    name: "Deploy"
     runs-on: ubuntu-latest
 
     steps:
@@ -20,31 +20,31 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
-          cache: 'pnpm'
+          node-version: "lts/*"
+          cache: "pnpm"
           cache-dependency-path: |
             pnpm-lock.yaml
-            svelte/pnpm-lock.yaml
+            app/pnpm-lock.yaml
 
-      - name: Install dependencies (root, svelte)
+      - name: Install dependencies
         run: pnpm run i
 
       - name: Build the svelte site
-        run: pnpm svelte:build
+        run: pnpm build
 
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v2.1
         with:
-          publish-dir: './svelte/build'
+          publish-dir: "./app/build"
           production-branch: main
           production-deploy: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: 'Main Branch Deploy (Svelte)'
+          deploy-message: "Main Branch Deploy"
           enable-pull-request-comment: false
           enable-commit-comment: false
           overwrites-pull-request-comment: false
-          github-deployment-description: 'Netlify Deploy (Svelte)'
+          github-deployment-description: "Netlify Deploy"
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SVELTE_SITE_ID }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         timeout-minutes: 1
