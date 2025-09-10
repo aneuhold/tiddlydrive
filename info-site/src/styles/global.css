@@ -70,3 +70,55 @@ html {
   line-height: 1.75;
   letter-spacing: 0.02857em;
 }
+
+/* Primary action button (anchors or buttons) */
+.primary-btn {
+  --btn-base: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--btn-base);
+  color: #fff;
+  padding: 0.6rem 1.3rem 0.55rem;
+  border-radius: 999px;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  box-shadow:
+    0 2px 6px -1px var(--color-shadow),
+    0 1px 2px var(--color-shadow-light);
+  transition:
+    filter 160ms ease,
+    transform 160ms ease,
+    box-shadow 200ms ease;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  position: relative;
+}
+.primary-btn:hover,
+.primary-btn:focus-visible {
+  filter: brightness(1.12) saturate(1.05);
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 10px -2px var(--color-shadow),
+    0 2px 4px var(--color-shadow-light);
+}
+.primary-btn:active {
+  filter: brightness(0.92) saturate(1.05);
+  transform: translateY(0);
+  box-shadow:
+    0 2px 4px -1px var(--color-shadow),
+    0 1px 2px var(--color-shadow-light);
+}
+.primary-btn:focus-visible {
+  outline: 2px solid var(--color-primary-100);
+  outline-offset: 2px;
+}
+.primary-btn:disabled,
+.primary-btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
