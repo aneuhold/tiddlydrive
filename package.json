@@ -5,7 +5,12 @@
   "description": "Modernized Tiddly Drive 2 Google Drive app integration",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "dev": "node scripts/build.mjs --watch"
+    "dev": "node scripts/build.mjs --watch",
+    "icons:clean": "rm -rf app/branding/png && mkdir -p app/branding/png",
+    "icons:single": "rsvg-convert -w $WIDTH -h $WIDTH app/branding/logo-icon.svg > app/branding/png/icon-$WIDTH.png",
+    "icons:full": "rsvg-convert -w 1024 app/branding/logo-full.svg > app/branding/png/logo-full-1024.png && rsvg-convert -w 1024 app/branding/logo-full-inverted.svg > app/branding/png/logo-full-inverted-1024.png",
+    "icons:all": "pnpm run icons:clean && for s in 32 48 64 120 128 256 512; do WIDTH=$s pnpm run -s icons:single; done && pnpm run -s icons:full",
+    "assets": "pnpm run build && pnpm run icons:all"
   },
   "devDependencies": {
     "dotenv": "^16.4.5",
