@@ -1,96 +1,260 @@
-<script>
-  // Landing page has no dynamic state currently
+<script lang="ts">
+  import { resolve } from '$app/paths';
+  import { getAccessToken, initAuth } from '$lib/td2/auth';
+  import { loadFile, parseState, save } from '$lib/td2/drive';
+  import { showToast } from '$lib/td2/ui';
+  import { onMount } from 'svelte';
+
+  let iframeEl: HTMLIFrameElement;
+  let hasState = false;
+  let loading = true;
+  let error: string | null = null;
+  let autosave = true;
+  let hotkey = true;
+  let disableSave = false;
+
+  /**
+   * Read a simple cookie value by name.
+   *
+   * @param name cookie name
+   * @returns value or null
+   */
+  function readCookie(name: string): string | null {
+    const nameEQ = name + '=';
+    return (
+      document.cookie
+        .split(';')
+        .map((c) => c.trim())
+        .find((c) => c.startsWith(nameEQ))
+        ?.substring(nameEQ.length) || null
+    );
+  }
+  /**
+   * Write a cookie with expiration in days.
+   *
+   * @param name cookie name
+   * @param value cookie value
+   * @param days number of days until expiry
+   */
+  function writeCookie(name: string, value: string, days: number) {
+    const expiry = Date.now() + days * 24 * 60 * 60 * 1000;
+    const date = new Date(expiry);
+    document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
+  }
+  /** Sync UI boolean prefs from stored cookies. */
+  function syncPrefsFromCookies() {
+    autosave = readCookie('enableautosave') !== 'false';
+    hotkey = readCookie('enablehotkeysave') !== 'false';
+    disableSave = readCookie('disablesave') === 'true';
+  }
+  /**
+   * Persist a boolean preference both logically and as a cookie.
+   *
+   * @param name semantic name (unused placeholder for potential future state map)
+   * @param value boolean value to persist
+   * @param cookie cookie key
+   */
+  function persist(name: string, value: boolean, cookie: string) {
+    writeCookie(cookie, value ? 'true' : 'false', 364);
+  }
+  let autosaveInterval: number | null = null;
+  /** Start (or restart) autosave interval if enabled. */
+  function startAutosaveLoop() {
+    if (autosaveInterval) window.clearInterval(autosaveInterval);
+    autosaveInterval = window.setInterval(() => {
+      if (!autosave || disableSave) return;
+      const doc = iframeEl.contentWindow?.document;
+      if (!doc) return;
+      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      // Fire and forget
+      void save(html, { autosave: true });
+    }, 5000);
+  }
+  /** Register cmd/ctrl + S handler. */
+  function registerHotkey() {
+    window.addEventListener('keydown', (e) => {
+      if (!hotkey) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        manualSave();
+      }
+    });
+  }
+  /** Trigger a manual save ignoring autosave state. */
+  async function manualSave() {
+    if (disableSave) {
+      showToast('Save disabled');
+      return;
+    }
+    try {
+      const doc = iframeEl.contentWindow?.document;
+      if (!doc) return;
+      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      await save(html, {});
+    } catch (e) {
+      console.error(e);
+      error = 'Save failed';
+    }
+  }
+  /** Initiate interactive auth flow. */
+  async function authenticate() {
+    await getAccessToken({ interactive: true });
+  }
+  onMount(async () => {
+    syncPrefsFromCookies();
+    hasState = !!parseState();
+    await initAuth();
+    if (!hasState) {
+      loading = false;
+      return;
+    }
+    try {
+      await loadFile(iframeEl);
+      startAutosaveLoop();
+      registerHotkey();
+    } catch (e) {
+      error = (e as Error).message;
+    } finally {
+      loading = false;
+    }
+  });
 </script>
 
-<main class="landing">
-  <header class="hero">
-    <h1 class="header-2 brand">Tiddly Drive 2</h1>
-    <h2 class="header-6 subtitle">
-      Open & save your single‑file TiddlyWiki right from Google Drive.
-    </h2>
-  </header>
-  <section class="feature-intro">
-    <p class="subtitle-1">
-      A modern, privacy‑first bridge between Google Drive and classic TiddlyWiki files.
-    </p>
-    <ul class="feature-list">
-      <li>
-        <strong>Minimal Scope:</strong> Uses only <code>drive.file</code> for the files you choose.
-      </li>
-      <li><strong>Client‑Side Only:</strong> No server stores your content.</li>
-      <li><strong>Open Source:</strong> MIT licensed and community friendly.</li>
-    </ul>
-  </section>
-  <section class="actions">
-    <a
-      class="primary-btn button-text"
-      href="https://github.com/aneuhold/tiddlydrive"
-      target="_blank"
-      rel="noreferrer"
-    >
-      View Repository
-    </a>
-    <div class="inline-links subtitle-1">
-      <a data-sveltekit-preload-data="hover" href="/privacy">Privacy Policy</a>
-      <span aria-hidden="true">·</span>
-      <a data-sveltekit-preload-data="hover" href="/terms">Terms of Service</a>
+<svelte:head>
+  <title>Tiddly Drive 2 – App</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</svelte:head>
+
+<main class="app-shell">
+  {#if loading}
+    <div class="loader">Loading…</div>
+  {:else if error}
+    <div class="error">{error}</div>
+  {:else if !hasState}
+    <div class="nofile">
+      <h2>No file state provided</h2>
+      <p>Launch this page via Google Drive “Open with”.</p>
+      <p>
+        Need info about the project? Visit the <a href={resolve('/info')}>info site</a>.
+      </p>
     </div>
-  </section>
+  {:else}
+    <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame" />
+  {/if}
+  <aside class="panel">
+    <h3>Settings</h3>
+    <label
+      ><input
+        type="checkbox"
+        bind:checked={autosave}
+        on:change={() => {
+          persist('enableautosave', autosave, 'enableautosave');
+          startAutosaveLoop();
+        }}
+      /> Autosave</label
+    >
+    <label
+      ><input
+        type="checkbox"
+        bind:checked={hotkey}
+        on:change={() => {
+          persist('enablehotkeysave', hotkey, 'enablehotkeysave');
+        }}
+      /> Hotkey Save</label
+    >
+    <label
+      ><input
+        type="checkbox"
+        bind:checked={disableSave}
+        on:change={() => {
+          persist('disablesave', disableSave, 'disablesave');
+        }}
+      /> Disable Drive Save</label
+    >
+    <div class="actions">
+      <button on:click={manualSave}>Save Now</button>
+      <button on:click={authenticate}>Authenticate</button>
+    </div>
+  </aside>
 </main>
 
 <style>
-  .landing {
-    max-width: 960px;
-    margin: 0 auto;
-    text-align: center;
-    padding: 0 1.25rem 4rem;
+  :root {
+    --color-primary: hsla(164, 95%, 28%, 1);
+    --color-shadow-light: rgba(0, 0, 0, 0.06);
   }
-  .hero {
-    padding-top: 3.5rem;
-  }
-  .subtitle {
-    margin-top: 0.85rem;
-    font-weight: 500;
-  }
-  .feature-intro {
-    margin-top: 1.75rem;
-  }
-  .feature-list {
+  .app-shell {
     display: grid;
-    gap: 0.75rem;
-    list-style: none;
-    padding: 0;
-    margin: 1.1rem 0 0;
+    grid-template-columns: 1fr 260px;
+    gap: 1rem;
+    padding: 1rem;
+    align-items: start;
+    font-family: system-ui, sans-serif;
+    background: #f5f7f8;
+    min-height: 100vh;
   }
-  .feature-list li {
+  .wiki-frame {
+    width: 100%;
+    min-height: 80vh;
+    border: 1px solid var(--color-shadow-light);
+    border-radius: 8px;
     background: #fff;
-    padding: 1rem 1.15rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 4px var(--color-shadow-light);
-    font-size: 0.95rem;
   }
-  .actions {
-    margin-top: 2.25rem;
+  .panel {
+    background: #fff;
+    padding: 0.9rem 1rem 1.2rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px var(--color-shadow-light);
+    font-size: 0.85rem;
     display: flex;
     flex-direction: column;
+    gap: 0.55rem;
+  }
+  .panel h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1rem;
+  }
+  .panel label {
+    display: flex;
+    gap: 0.5rem;
     align-items: center;
-    gap: 0.85rem;
+    font-weight: 500;
   }
-  .inline-links a {
-    color: var(--color-primary-700);
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
   }
-  code {
-    background: var(--color-accent-light);
-    padding: 2px 5px;
+  button {
+    cursor: pointer;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    padding: 0.55rem 0.9rem;
     border-radius: 6px;
-    font-size: 0.85em;
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
   }
-  @media (max-width: 640px) {
-    .header-2 {
-      font-size: 2.5rem;
+  button:hover {
+    filter: brightness(1.08);
+  }
+  .loader,
+  .error,
+  .nofile {
+    grid-column: 1 / span 2;
+    background: #fff;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px var(--color-shadow-light);
+  }
+  @media (max-width: 960px) {
+    .app-shell {
+      grid-template-columns: 1fr;
     }
-    .feature-list li {
-      padding: 0.9rem 0.95rem;
+    .panel {
+      order: -1;
     }
   }
 </style>

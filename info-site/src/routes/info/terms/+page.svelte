@@ -1,4 +1,6 @@
 <script>
+  import { resolve } from '$app/paths';
+
   const year = new Date().getFullYear();
 </script>
 
@@ -45,7 +47,9 @@
         >GitHub Issues</a
       >.
     </p>
-    <p class="back-link"><a data-sveltekit-preload-data="hover" href="/">← Back to home</a></p>
+    <p class="back-link">
+      <a data-sveltekit-preload-data="hover" href={resolve('/info')}>← Back to info home</a>
+    </p>
   </div>
 </main>
 

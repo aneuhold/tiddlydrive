@@ -46,7 +46,7 @@ export async function loadFile(iframe: HTMLIFrameElement): Promise<LoadResult> {
         'File not found or not accessible with current scope (drive.file). Try: 1) Confirm correct Google account, 2) Use real Drive "Open with" flow, or 3) Temporarily broaden scope to drive.readonly for debugging.'
       );
     }
-    throw new Error('Metadata fetch failed: ' + metaResp.status + ' ' + body);
+    throw new Error('Metadata fetch failed: ' + metaResp.status.toString() + ' ' + body);
   }
   etag = metaResp.headers.get('etag');
   const meta = await metaResp.json();
@@ -59,7 +59,7 @@ export async function loadFile(iframe: HTMLIFrameElement): Promise<LoadResult> {
       body = await fileResp.text();
     } catch {}
     console.warn('[td2/drive] download failed', fileResp.status, body);
-    throw new Error('File download failed: ' + fileResp.status + ' ' + body);
+    throw new Error('File download failed: ' + fileResp.status.toString() + ' ' + body);
   }
   const text = await fileResp.text();
   iframe.srcdoc = text;
@@ -105,7 +105,7 @@ export async function save(html: string, { autosave = false } = {}) {
   }
   if (!resp.ok) {
     showToast('Save failed');
-    throw new Error('Save failed ' + resp.status);
+    throw new Error('Save failed ' + resp.status.toString());
   }
   etag = resp.headers.get('etag') || etag;
   showToast(autosave ? 'Autosaved' : 'Saved');
