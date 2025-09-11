@@ -1,28 +1,29 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { getAccessToken, initAuth } from '$lib/auth';
-  import { loadFile, parseState, save } from '$lib/drive';
+  import { loadFile, parseState, registerWikiSaver, save } from '$lib/drive';
   import { showToast } from '$lib/ui';
   import { onMount, tick } from 'svelte';
 
-  let iframeEl: HTMLIFrameElement;
-  let hasState = false;
+  let iframeEl = $state<HTMLIFrameElement | null>(null);
+  let hasState = $state(false);
   // 'loading' controls initial app shell readiness before we know if there is state.
-  let loading = true;
+  let loading = $state(true);
   // 'fetchingFile' tracks the network fetch after iframe is mounted.
-  let fetchingFile = false;
-  let error: string | null = null;
-  let autosave = true;
-  let hotkey = true;
-  let disableSave = false;
+  let fetchingFile = $state(false);
+  let error = $state<string | null>(null);
+  let autosave = $state(true);
+  let hotkey = $state(true);
+  let disableSave = $state(false);
+  let showSettings = $state(false);
 
   /**
    * Read a simple cookie value by name.
    *
    * @param name cookie name
-   * @returns value or null
+   * @returns cookie value or null when missing
    */
-  function readCookie(name: string): string | null {
+  const readCookie = (name: string): string | null => {
     const nameEQ = name + '=';
     return (
       document.cookie
@@ -31,7 +32,8 @@
         .find((c) => c.startsWith(nameEQ))
         ?.substring(nameEQ.length) || null
     );
-  }
+  };
+
   /**
    * Write a cookie with expiration in days.
    *
@@ -39,17 +41,19 @@
    * @param value cookie value
    * @param days number of days until expiry
    */
-  function writeCookie(name: string, value: string, days: number) {
+  const writeCookie = (name: string, value: string, days: number): void => {
     const expiry = Date.now() + days * 24 * 60 * 60 * 1000;
     const date = new Date(expiry);
     document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
-  }
+  };
+
   /** Sync UI boolean prefs from stored cookies. */
-  function syncPrefsFromCookies() {
+  const syncPrefsFromCookies = (): void => {
     autosave = readCookie('enableautosave') !== 'false';
     hotkey = readCookie('enablehotkeysave') !== 'false';
     disableSave = readCookie('disablesave') === 'true';
-  }
+  };
+
   /**
    * Persist a boolean preference both logically and as a cookie.
    *
@@ -57,71 +61,84 @@
    * @param value boolean value to persist
    * @param cookie cookie key
    */
-  function persist(name: string, value: boolean, cookie: string) {
+  const persist = (name: string, value: boolean, cookie: string): void => {
     writeCookie(cookie, value ? 'true' : 'false', 364);
-  }
-  let autosaveInterval: number | null = null;
-  /** Start (or restart) autosave interval if enabled. */
-  function startAutosaveLoop() {
-    if (autosaveInterval) window.clearInterval(autosaveInterval);
-    autosaveInterval = window.setInterval(() => {
-      if (!autosave || disableSave) return;
-      const doc = iframeEl.contentWindow?.document;
-      if (!doc) return;
-      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-      // Fire and forget
-      void save(html, { autosave: true });
-    }, 5000);
-  }
-  /** Register cmd/ctrl + S handler. */
-  function registerHotkey() {
-    window.addEventListener('keydown', (e) => {
+  };
+
+  /**
+   * Register cmd/ctrl + S handler.
+   *
+   * @returns Cleanup function to unregister the handler
+   */
+  const registerHotkey = (): (() => void) => {
+    const handler = (e: KeyboardEvent): void => {
       if (!hotkey) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        manualSave();
+        void manualSave();
       }
-    });
-  }
+    };
+    window.addEventListener('keydown', handler);
+    return () => {
+      window.removeEventListener('keydown', handler);
+    };
+  };
+
   /** Trigger a manual save ignoring autosave state. */
-  async function manualSave() {
+  const manualSave = async (): Promise<void> => {
     if (disableSave) {
       showToast('Save disabled');
       return;
     }
     try {
-      const doc = iframeEl.contentWindow?.document;
+      const doc = iframeEl?.contentWindow?.document;
       if (!doc) return;
-      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      const html = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
       await save(html, {});
     } catch (e) {
       console.error(e);
       error = 'Save failed';
     }
-  }
+  };
+
   /** Initiate interactive auth flow. */
-  async function authenticate() {
+  const authenticate = async (): Promise<void> => {
     await getAccessToken({ interactive: true });
-  }
-  onMount(async () => {
-    syncPrefsFromCookies();
-    hasState = !!parseState();
-    await initAuth();
-    // Allow main UI (and iframe if applicable) to mount
-    loading = false;
-    if (!hasState) return;
-    // Mount iframe before attempting load
-    await tick();
-    fetchingFile = true;
-    try {
-      await loadFile(iframeEl);
-      startAutosaveLoop();
-      registerHotkey();
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      fetchingFile = false;
-    }
+  };
+
+  onMount(() => {
+    let unregisterHotkey: (() => void) | null = null;
+    (async () => {
+      syncPrefsFromCookies();
+      hasState = !!parseState();
+      await initAuth();
+      // Allow main UI (and iframe if applicable) to mount
+      loading = false;
+      if (!hasState) return;
+      // Mount iframe before attempting load
+      await tick();
+      fetchingFile = true;
+      try {
+        if (iframeEl === null) {
+          error = 'Internal error: frame missing';
+          return;
+        }
+        const frame = iframeEl;
+        await loadFile(frame);
+        registerWikiSaver(frame, {
+          disableSave: () => disableSave,
+          autosaveEnabled: () => autosave
+        });
+        unregisterHotkey = registerHotkey();
+      } catch (e) {
+        error = (e as Error).message;
+      } finally {
+        fetchingFile = false;
+      }
+    })();
+    return () => {
+      if (unregisterHotkey) unregisterHotkey();
+    };
   });
 </script>
 
@@ -130,7 +147,7 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </svelte:head>
 
-<main class="app-shell">
+<main class="app-shell" class:hasfile={hasState && !error}>
   {#if loading}
     <div class="loader">Initializing…</div>
   {:else if error}
@@ -149,43 +166,51 @@
         <div class="overlay">Loading file…</div>
       {/if}
       <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
+      <button
+        class="settings-fab"
+        onclick={() => (showSettings = !showSettings)}
+        aria-label="Toggle settings"
+      >
+        {showSettings ? '×' : '⚙'}
+      </button>
+      {#if showSettings}
+        <aside class="panel settings-overlay">
+          <h3>Settings</h3>
+          <label
+            ><input
+              type="checkbox"
+              bind:checked={autosave}
+              onchange={() => {
+                persist('enableautosave', autosave, 'enableautosave');
+              }}
+            /> Autosave</label
+          >
+          <label
+            ><input
+              type="checkbox"
+              bind:checked={hotkey}
+              onchange={() => {
+                persist('enablehotkeysave', hotkey, 'enablehotkeysave');
+              }}
+            /> Hotkey Save</label
+          >
+          <label
+            ><input
+              type="checkbox"
+              bind:checked={disableSave}
+              onchange={() => {
+                persist('disablesave', disableSave, 'disablesave');
+              }}
+            /> Disable Drive Save</label
+          >
+          <div class="actions">
+            <button onclick={manualSave}>Save Now</button>
+            <button onclick={authenticate}>Authenticate</button>
+          </div>
+        </aside>
+      {/if}
     </div>
   {/if}
-  <aside class="panel">
-    <h3>Settings</h3>
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={autosave}
-        on:change={() => {
-          persist('enableautosave', autosave, 'enableautosave');
-          startAutosaveLoop();
-        }}
-      /> Autosave</label
-    >
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={hotkey}
-        on:change={() => {
-          persist('enablehotkeysave', hotkey, 'enablehotkeysave');
-        }}
-      /> Hotkey Save</label
-    >
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={disableSave}
-        on:change={() => {
-          persist('disablesave', disableSave, 'disablesave');
-        }}
-      /> Disable Drive Save</label
-    >
-    <div class="actions">
-      <button on:click={manualSave}>Save Now</button>
-      <button on:click={authenticate}>Authenticate</button>
-    </div>
-  </aside>
 </main>
 
 <style>
@@ -193,22 +218,59 @@
     --color-primary: hsla(164, 95%, 28%, 1);
     --color-shadow-light: rgba(0, 0, 0, 0.06);
   }
+  :global(html),
+  :global(body),
   .app-shell {
-    display: grid;
-    grid-template-columns: 1fr 260px;
-    gap: 1rem;
-    padding: 1rem;
-    align-items: start;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  .app-shell {
     font-family: system-ui, sans-serif;
-    background: #f5f7f8;
+    background: #111;
+    color: #222;
     min-height: 100vh;
+    position: relative;
+  }
+  .frame-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
   }
   .wiki-frame {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    min-height: 80vh;
-    border: 1px solid var(--color-shadow-light);
-    border-radius: 8px;
+    height: 100%;
+    border: 0;
     background: #fff;
+  }
+  .settings-fab {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 50;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  }
+  .settings-overlay {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 40;
+    background: #fff;
+    max-height: calc(100vh - 1.5rem);
+    overflow-y: auto;
+    width: 270px;
   }
   .panel {
     background: #fff;
@@ -253,18 +315,27 @@
   .loader,
   .error,
   .nofile {
-    grid-column: 1 / span 2;
     background: #fff;
     padding: 2rem;
     border-radius: 12px;
     box-shadow: 0 2px 6px var(--color-shadow-light);
+    margin: 2rem;
   }
   @media (max-width: 960px) {
-    .app-shell {
-      grid-template-columns: 1fr;
+    .settings-overlay {
+      width: 85%;
     }
-    .panel {
-      order: -1;
-    }
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    font-size: 1.2rem;
+    z-index: 10;
+    backdrop-filter: blur(1px);
   }
 </style>

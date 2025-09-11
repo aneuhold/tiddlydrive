@@ -1,18 +1,21 @@
-const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
+
+const SCOPES = 'https://www.googleapis.com/auth/drive';
 const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
 
-// Using loose typing to avoid needing full GIS type package
-let tokenClient: any | null = null;
+let tokenClient: GoogleTokenClient | null = null;
 let accessToken: string | null = null;
 let tokenExpiry = 0;
 let requesting = false;
 const pending: Array<(t: string) => void> = [];
 
 /**
+ * Waits for Google Identity Services to be available on window.
  *
+ * @returns Promise that resolves when GIS is available
  */
-function waitForGoogleIdentity(): Promise<void> {
-  return new Promise((resolve) => {
+const waitForGoogleIdentity = async (): Promise<void> =>
+  new Promise((resolve) => {
     if (window.google?.accounts?.oauth2) {
       resolve();
       return;
@@ -24,74 +27,90 @@ function waitForGoogleIdentity(): Promise<void> {
       }
     }, 50);
   });
-}
 
 /**
- *
+ * Initializes the Google Identity Services token client.
  */
-export async function initAuth() {
+export const initAuth = async (): Promise<void> => {
   await waitForGoogleIdentity();
-  tokenClient = window.google.accounts.oauth2.initTokenClient({
+  const gis = window.google?.accounts?.oauth2;
+  if (!gis || typeof gis.initTokenClient !== 'function') {
+    throw new Error('Google Identity Services not available');
+  }
+  // Provide a placeholder callback; real callback is set per request.
+  tokenClient = gis.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    callback: (resp: any) => {
-      if (resp.error) return;
-      accessToken = resp.access_token;
-      tokenExpiry = Date.now() + (resp.expires_in - 30) * 1000;
-      pending.splice(0).forEach((r) => {
-        r(accessToken!);
-      });
+    callback: () => {
+      /* replaced per request */
     }
-  });
-}
+  }) as GoogleTokenClient;
+};
 
 /**
+ * Requests an OAuth token interactively via GIS, optionally forcing the consent prompt.
+ * Also updates the cached token/expiry and resolves any pending concurrent requests.
  *
- * @param prompt
+ * @param prompt Either 'consent' to force consent screen or '' for normal flow
+ * @returns Promise resolving to the OAuth access token string
  */
-async function requestInteractive(prompt = ''): Promise<string> {
-  return new Promise((resolve, reject) => {
+const requestInteractive = async (prompt: '' | 'consent' = ''): Promise<string> =>
+  new Promise((resolve, reject) => {
     if (!tokenClient) {
       reject(new Error('Token client not init'));
       return;
     }
-    tokenClient.callback = (resp: any) => {
+    tokenClient.callback = (resp: GoogleOAuth2TokenResponse) => {
       if (resp.error) {
-        reject(resp);
+        reject(new Error(resp.error));
         return;
       }
+      accessToken = resp.access_token;
+      tokenExpiry = Date.now() + (resp.expires_in - 30) * 1000;
+      // Resolve the caller and any queued waiters.
       resolve(resp.access_token);
+      const toResolve = pending.splice(0);
+      toResolve.forEach((r) => {
+        if (typeof accessToken === 'string') {
+          r(accessToken);
+        }
+      });
     };
     try {
       tokenClient.requestAccessToken({ prompt });
     } catch (e) {
-      reject(e);
+      reject(e instanceof Error ? e : new Error(String(e)));
     }
   });
-}
 
 /**
+ * Retrieves a valid access token, reusing cached tokens until near expiry.
+ * Collapses concurrent requests into a single in-flight interactive request.
  *
- * @param opts
- * @param opts.interactive
+ * @param opts Optional controls for interactive prompts
+ * @param opts.interactive Currently unused (interactive is required by GIS token client)
+ * @param opts.prompt Force Google consent screen ('consent') or default ('')
+ * @returns Promise resolving to a valid OAuth access token
  */
-export async function getAccessToken(opts: { interactive?: boolean } = {}): Promise<string> {
+export const getAccessToken = async (
+  opts: { interactive?: boolean; prompt?: 'consent' | '' } = {}
+): Promise<string> => {
   if (accessToken && Date.now() < tokenExpiry) return accessToken;
   if (!tokenClient) await initAuth();
   if (requesting) return new Promise((res) => pending.push(res));
   requesting = true;
   try {
-    const tok = await requestInteractive('');
+    const tok = await requestInteractive(opts.prompt ?? '');
     return tok;
   } finally {
     requesting = false;
   }
-}
+};
 
 /**
- *
+ * Clears any cached token and expiry so the next request will refresh.
  */
-export function clearToken() {
+export const clearToken = (): void => {
   accessToken = null;
   tokenExpiry = 0;
-}
+};

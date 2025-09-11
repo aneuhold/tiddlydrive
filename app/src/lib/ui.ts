@@ -1,9 +1,10 @@
 /**
+ * Shows a simple toast message in the bottom-right corner.
  *
- * @param message
- * @param timeout
+ * @param message The text to show
+ * @param timeout Milliseconds before the toast auto-dismisses
  */
-export function showToast(message: string, timeout = 2000) {
+export const showToast = (message: string, timeout = 2000): void => {
   let container = document.getElementById('td2-toast');
   if (!container) {
     container = document.createElement('div');
@@ -38,13 +39,14 @@ export function showToast(message: string, timeout = 2000) {
       el.remove();
     }, 320);
   }, timeout);
-}
+};
 
 /**
+ * Displays a simple blocking alert with a title and message body.
  *
- * @param title
- * @param body
+ * @param title Title of the error
+ * @param body Message body
  */
-export function showError(title: string, body: string) {
+export const showError = (title: string, body: string): void => {
   alert(title + '\n' + body);
-}
+};
