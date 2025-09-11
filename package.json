@@ -11,9 +11,9 @@
     "dev": "pnpm --dir app dev",
     "icons:clean": "rm -rf branding/png && mkdir -p branding/png",
     "icons:single": "rsvg-convert -w $WIDTH -h $WIDTH branding/logo-icon.svg > branding/png/icon-$WIDTH.png",
-    "icons:full": "rsvg-convert -w 1024 branding/logo-full.svg > branding/png/logo-full-1024.png && rsvg-convert -w 1024 branding/logo-full-inverted.svg > branding/png/logo-full-inverted-1024.png",
+  "icons:full": "rsvg-convert -w 1024 branding/logo-full.svg > branding/png/logo-full-1024.png && rsvg-convert -w 1024 branding/logo-full-inverted.svg > branding/png/logo-full-inverted-1024.png && rsvg-convert -w 220 -h 140 branding/logo-full.svg > branding/png/logo-full-220x140.png && rsvg-convert -w 220 -h 140 branding/logo-full-inverted.svg > branding/png/logo-full-inverted-220x140.png",
     "icons:ico": "convert branding/png/icon-16.png branding/png/icon-32.png branding/png/icon-48.png branding/png/icon-64.png branding/png/icon-128.png branding/png/icon-256.png branding/png/favicon.ico",
-    "icons:all": "pnpm run icons:clean && for s in 16 32 48 64 120 128 256 512; do WIDTH=$s pnpm run -s icons:single; done && pnpm run -s icons:full && pnpm run -s icons:ico",
+    "icons:all": "pnpm run icons:clean && for s in 16 32 48 64 96 120 128 256 512; do WIDTH=$s pnpm run -s icons:single; done && pnpm run -s icons:full && pnpm run -s icons:ico",
     "assets": "pnpm run build && pnpm run icons:all"
   },
   "devDependencies": {

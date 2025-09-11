@@ -33,7 +33,8 @@ export async function loadFile(iframe: HTMLIFrameElement): Promise<LoadResult> {
     throw new Error('Missing or multi file state');
   currentFileId = state.ids[0];
   const token = await getAccessToken({ interactive: true });
-  const metaUrl = `https://www.googleapis.com/drive/v3/files/${currentFileId}?fields=id,name,mimeType,modifiedTime,version`;
+  // Include supportsAllDrives/includeItemsFromAllDrives so files in shared drives are accessible.
+  const metaUrl = `https://www.googleapis.com/drive/v3/files/${currentFileId}?fields=id,name,mimeType,modifiedTime,version&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const metaResp = await fetch(metaUrl, { headers: { Authorization: `Bearer ${token}` } });
   if (!metaResp.ok) {
     let body = '';
@@ -42,16 +43,22 @@ export async function loadFile(iframe: HTMLIFrameElement): Promise<LoadResult> {
     } catch {}
     console.warn('[td2/drive] metadata fetch failed', metaResp.status, body);
     if (metaResp.status === 404) {
-      throw new Error(
-        'File not found or not accessible with current scope (drive.file). Try: 1) Confirm correct Google account, 2) Use real Drive "Open with" flow, or 3) Temporarily broaden scope to drive.readonly for debugging.'
-      );
+      // Heuristics: common causes while developing without Marketplace "Open with" flow
+      const hints = [
+        'Confirm the file ID is correct (no extra characters).',
+        'Ensure you are logged into the same Google account that owns / can access the file.',
+        'If the file lives in a Shared Drive, supportsAllDrives=true is now added (retry after refresh).',
+        'If you are manually crafting the ?state= parameter while using only the drive.file scope, the token may NOT grant this file (drive.file only covers files the user opened via the official Drive UI/Open-with or a Picker).',
+        'For local/manual testing you can temporarily broaden the scope to drive.readonly (set VITE_GOOGLE_SCOPES). Revert before final review.'
+      ];
+      throw new Error('File not found (404). Possible causes:\n- ' + hints.join('\n- '));
     }
     throw new Error('Metadata fetch failed: ' + metaResp.status.toString() + ' ' + body);
   }
   etag = metaResp.headers.get('etag');
   const meta = await metaResp.json();
   currentFileName = meta.name || currentFileName;
-  const downloadUrl = `https://www.googleapis.com/drive/v3/files/${currentFileId}?alt=media`;
+  const downloadUrl = `https://www.googleapis.com/drive/v3/files/${currentFileId}?alt=media&supportsAllDrives=true`;
   const fileResp = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${token}` } });
   if (!fileResp.ok) {
     let body = '';

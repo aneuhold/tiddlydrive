@@ -3,11 +3,14 @@
   import { getAccessToken, initAuth } from '$lib/auth';
   import { loadFile, parseState, save } from '$lib/drive';
   import { showToast } from '$lib/ui';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
 
   let iframeEl: HTMLIFrameElement;
   let hasState = false;
+  // 'loading' controls initial app shell readiness before we know if there is state.
   let loading = true;
+  // 'fetchingFile' tracks the network fetch after iframe is mounted.
+  let fetchingFile = false;
   let error: string | null = null;
   let autosave = true;
   let hotkey = true;
@@ -104,10 +107,12 @@
     syncPrefsFromCookies();
     hasState = !!parseState();
     await initAuth();
-    if (!hasState) {
-      loading = false;
-      return;
-    }
+    // Allow main UI (and iframe if applicable) to mount
+    loading = false;
+    if (!hasState) return;
+    // Mount iframe before attempting load
+    await tick();
+    fetchingFile = true;
     try {
       await loadFile(iframeEl);
       startAutosaveLoop();
@@ -115,7 +120,7 @@
     } catch (e) {
       error = (e as Error).message;
     } finally {
-      loading = false;
+      fetchingFile = false;
     }
   });
 </script>
@@ -127,7 +132,7 @@
 
 <main class="app-shell">
   {#if loading}
-    <div class="loader">Loading…</div>
+    <div class="loader">Initializing…</div>
   {:else if error}
     <div class="error">{error}</div>
   {:else if !hasState}
@@ -139,7 +144,12 @@
       </p>
     </div>
   {:else}
-    <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
+    <div class="frame-wrapper">
+      {#if fetchingFile}
+        <div class="overlay">Loading file…</div>
+      {/if}
+      <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
+    </div>
   {/if}
   <aside class="panel">
     <h3>Settings</h3>
