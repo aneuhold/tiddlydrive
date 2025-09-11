@@ -3,19 +3,18 @@
   import { getAccessToken, initAuth } from '$lib/auth';
   import { loadFile, parseState, registerWikiSaver, save } from '$lib/drive';
   import { showToast } from '$lib/ui';
+  import UiHost from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
 
+  type Status = 'initializing' | 'no-state' | 'loading' | 'ready' | 'error';
+
   let iframeEl = $state<HTMLIFrameElement | null>(null);
-  let hasState = $state(false);
-  // 'loading' controls initial app shell readiness before we know if there is state.
-  let loading = $state(true);
-  // 'fetchingFile' tracks the network fetch after iframe is mounted.
-  let fetchingFile = $state(false);
+  let status = $state<Status>('initializing');
   let error = $state<string | null>(null);
-  let autosave = $state(true);
-  let hotkey = $state(true);
-  let disableSave = $state(false);
   let showSettings = $state(false);
+
+  type Prefs = { autosave: boolean; hotkey: boolean; disableSave: boolean };
+  const prefs = $state<Prefs>({ autosave: true, hotkey: true, disableSave: false });
 
   /**
    * Read a simple cookie value by name.
@@ -34,35 +33,36 @@
     );
   };
 
-  /**
-   * Write a cookie with expiration in days.
-   *
-   * @param name cookie name
-   * @param value cookie value
-   * @param days number of days until expiry
-   */
-  const writeCookie = (name: string, value: string, days: number): void => {
-    const expiry = Date.now() + days * 24 * 60 * 60 * 1000;
-    const date = new Date(expiry);
-    document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
+  // Legacy cookie writer is no longer used; prefs persist via localStorage.
+
+  const PREFS_KEY = 'td2:prefs';
+  /** Load prefs from localStorage (fallback to cookies for backward-compat). */
+  const loadPrefs = (): void => {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<Prefs>;
+        prefs.autosave = parsed.autosave ?? prefs.autosave;
+        prefs.hotkey = parsed.hotkey ?? prefs.hotkey;
+        prefs.disableSave = parsed.disableSave ?? prefs.disableSave;
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    // Back-compat with old cookies
+    prefs.autosave = readCookie('enableautosave') !== 'false';
+    prefs.hotkey = readCookie('enablehotkeysave') !== 'false';
+    prefs.disableSave = readCookie('disablesave') === 'true';
   };
 
-  /** Sync UI boolean prefs from stored cookies. */
-  const syncPrefsFromCookies = (): void => {
-    autosave = readCookie('enableautosave') !== 'false';
-    hotkey = readCookie('enablehotkeysave') !== 'false';
-    disableSave = readCookie('disablesave') === 'true';
-  };
-
-  /**
-   * Persist a boolean preference both logically and as a cookie.
-   *
-   * @param name semantic name (unused placeholder for potential future state map)
-   * @param value boolean value to persist
-   * @param cookie cookie key
-   */
-  const persist = (name: string, value: boolean, cookie: string): void => {
-    writeCookie(cookie, value ? 'true' : 'false', 364);
+  /** Persist preferences to localStorage. */
+  const persistPrefs = (): void => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      /* ignore */
+    }
   };
 
   /**
@@ -72,7 +72,7 @@
    */
   const registerHotkey = (): (() => void) => {
     const handler = (e: KeyboardEvent): void => {
-      if (!hotkey) return;
+      if (!prefs.hotkey) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         void manualSave();
@@ -86,7 +86,7 @@
 
   /** Trigger a manual save ignoring autosave state. */
   const manualSave = async (): Promise<void> => {
-    if (disableSave) {
+    if (prefs.disableSave) {
       showToast('Save disabled');
       return;
     }
@@ -103,37 +103,39 @@
 
   /** Initiate interactive auth flow. */
   const authenticate = async (): Promise<void> => {
-    await getAccessToken({ interactive: true });
+    await getAccessToken();
   };
 
   onMount(() => {
     let unregisterHotkey: (() => void) | null = null;
     (async () => {
-      syncPrefsFromCookies();
-      hasState = !!parseState();
+      loadPrefs();
+      const hasState = !!parseState();
+      if (!hasState) {
+        status = 'no-state';
+        return;
+      }
       await initAuth();
-      // Allow main UI (and iframe if applicable) to mount
-      loading = false;
-      if (!hasState) return;
+      status = 'loading';
       // Mount iframe before attempting load
       await tick();
-      fetchingFile = true;
       try {
         if (iframeEl === null) {
           error = 'Internal error: frame missing';
+          status = 'error';
           return;
         }
         const frame = iframeEl;
         await loadFile(frame);
         registerWikiSaver(frame, {
-          disableSave: () => disableSave,
-          autosaveEnabled: () => autosave
+          disableSave: () => prefs.disableSave,
+          autosaveEnabled: () => prefs.autosave
         });
         unregisterHotkey = registerHotkey();
+        status = 'ready';
       } catch (e) {
         error = (e as Error).message;
-      } finally {
-        fetchingFile = false;
+        status = 'error';
       }
     })();
     return () => {
@@ -147,12 +149,10 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </svelte:head>
 
-<main class="app-shell" class:hasfile={hasState && !error}>
-  {#if loading}
-    <div class="loader">Initializing…</div>
-  {:else if error}
+<main class="app-shell" class:hasfile={status === 'ready'}>
+  {#if status === 'error' && error}
     <div class="error">{error}</div>
-  {:else if !hasState}
+  {:else if status === 'no-state'}
     <div class="nofile">
       <h2>No file state provided</h2>
       <p>Launch this page via Google Drive “Open with”.</p>
@@ -162,8 +162,19 @@
     </div>
   {:else}
     <div class="frame-wrapper">
-      {#if fetchingFile}
+      {#if status === 'loading'}
         <div class="overlay">Loading file…</div>
+      {/if}
+      {#if showSettings}
+        <div
+          class="settings-backdrop"
+          role="button"
+          tabindex="0"
+          onclick={() => (showSettings = false)}
+          onkeydown={(e) => {
+            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') showSettings = false;
+          }}
+        ></div>
       {/if}
       <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
       <button
@@ -179,27 +190,27 @@
           <label
             ><input
               type="checkbox"
-              bind:checked={autosave}
+              bind:checked={prefs.autosave}
               onchange={() => {
-                persist('enableautosave', autosave, 'enableautosave');
+                persistPrefs();
               }}
             /> Autosave</label
           >
           <label
             ><input
               type="checkbox"
-              bind:checked={hotkey}
+              bind:checked={prefs.hotkey}
               onchange={() => {
-                persist('enablehotkeysave', hotkey, 'enablehotkeysave');
+                persistPrefs();
               }}
             /> Hotkey Save</label
           >
           <label
             ><input
               type="checkbox"
-              bind:checked={disableSave}
+              bind:checked={prefs.disableSave}
               onchange={() => {
-                persist('disablesave', disableSave, 'disablesave');
+                persistPrefs();
               }}
             /> Disable Drive Save</label
           >
@@ -211,6 +222,7 @@
       {/if}
     </div>
   {/if}
+  <UiHost />
 </main>
 
 <style>
@@ -249,7 +261,7 @@
   }
   .settings-fab {
     position: absolute;
-    top: 0.75rem;
+    bottom: 0.75rem;
     right: 0.75rem;
     z-index: 50;
     background: var(--color-primary);
@@ -264,13 +276,19 @@
   }
   .settings-overlay {
     position: absolute;
-    top: 0.75rem;
+    bottom: 0.75rem;
     right: 0.75rem;
     z-index: 40;
     background: #fff;
     max-height: calc(100vh - 1.5rem);
     overflow-y: auto;
     width: 270px;
+  }
+  .settings-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    background: transparent;
   }
   .panel {
     background: #fff;
@@ -312,7 +330,6 @@
   button:hover {
     filter: brightness(1.08);
   }
-  .loader,
   .error,
   .nofile {
     background: #fff;

@@ -1,13 +1,53 @@
 import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
 
-const SCOPES = 'https://www.googleapis.com/auth/drive';
-const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
+const SCOPES = import.meta.env.VITE_GOOGLE_SCOPES || 'https://www.googleapis.com/auth/drive.file';
+const CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
 
 let tokenClient: GoogleTokenClient | null = null;
 let accessToken: string | null = null;
 let tokenExpiry = 0;
 let requesting = false;
 const pending: Array<(t: string) => void> = [];
+const STORAGE_KEY = 'td2:oauth';
+
+type CachedToken = {
+  accessToken: string;
+  expiry: number;
+};
+
+/** Load a cached token from localStorage into memory if valid. */
+const loadCachedToken = (): void => {
+  if (accessToken) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Partial<CachedToken>;
+    if (
+      typeof parsed.accessToken === 'string' &&
+      typeof parsed.expiry === 'number' &&
+      Date.now() < parsed.expiry
+    ) {
+      accessToken = parsed.accessToken;
+      tokenExpiry = parsed.expiry;
+    }
+  } catch {
+    /* ignore */
+  }
+};
+
+/** Persist the current token to localStorage for reuse across reloads. */
+const persistToken = (): void => {
+  try {
+    if (accessToken && tokenExpiry > Date.now()) {
+      const payload: CachedToken = { accessToken, expiry: tokenExpiry };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    }
+  } catch {
+    /* ignore */
+  }
+};
 
 /**
  * Waits for Google Identity Services to be available on window.
@@ -88,19 +128,19 @@ const requestInteractive = async (prompt: '' | 'consent' = ''): Promise<string> 
  * Collapses concurrent requests into a single in-flight interactive request.
  *
  * @param opts Optional controls for interactive prompts
- * @param opts.interactive Currently unused (interactive is required by GIS token client)
  * @param opts.prompt Force Google consent screen ('consent') or default ('')
  * @returns Promise resolving to a valid OAuth access token
  */
-export const getAccessToken = async (
-  opts: { interactive?: boolean; prompt?: 'consent' | '' } = {}
-): Promise<string> => {
+export const getAccessToken = async (opts: { prompt?: 'consent' | '' } = {}): Promise<string> => {
+  // Try to reuse a cached valid token from storage
+  loadCachedToken();
   if (accessToken && Date.now() < tokenExpiry) return accessToken;
   if (!tokenClient) await initAuth();
   if (requesting) return new Promise((res) => pending.push(res));
   requesting = true;
   try {
     const tok = await requestInteractive(opts.prompt ?? '');
+    persistToken();
     return tok;
   } finally {
     requesting = false;
@@ -113,4 +153,9 @@ export const getAccessToken = async (
 export const clearToken = (): void => {
   accessToken = null;
   tokenExpiry = 0;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 };

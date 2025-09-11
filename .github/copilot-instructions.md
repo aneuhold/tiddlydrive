@@ -3,6 +3,7 @@
 - TypeScript source code with Vitest testing and pnpm package management
 - Make edits directly in files unless asked to create new ones
 - Avoid code duplication; reuse existing code when possible
+- Svelte 5 for frontend
 
 ## Code Style
 

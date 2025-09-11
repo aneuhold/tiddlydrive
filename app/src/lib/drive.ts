@@ -24,6 +24,10 @@ export interface LoadResult {
  */
 export const parseState = (): DriveOpenState | null => {
   const params = new URLSearchParams(location.search);
+  const plainId = params.get('id');
+  if (plainId) {
+    return { ids: [plainId] } as DriveOpenState;
+  }
   const raw = params.get('state');
   if (!raw) return null;
   try {
@@ -44,7 +48,7 @@ export const loadFile = async (iframe: HTMLIFrameElement): Promise<LoadResult> =
   if (!state || !Array.isArray(state.ids) || state.ids.length !== 1)
     throw new Error('Missing or multi file state');
   currentFileId = state.ids[0];
-  const token = await getAccessToken({ interactive: true });
+  const token = await getAccessToken();
   // Include supportsAllDrives/includeItemsFromAllDrives so files in shared drives are accessible.
   const metaUrl = `https://www.googleapis.com/drive/v3/files/${currentFileId}?fields=id,name,mimeType,modifiedTime,version&supportsAllDrives=true&includeItemsFromAllDrives=true`;
   const metaResp = await fetch(metaUrl, { headers: { Authorization: `Bearer ${token}` } });
@@ -174,7 +178,8 @@ export const save = async (
   ].join('\r\n');
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
-    'Content-Type': `multipart/related; boundary=${boundary}`
+    'Content-Type': `multipart/related; boundary=${boundary}`,
+    ...(etag ? { 'If-Match': etag } : {})
   };
 
   /**
