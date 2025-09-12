@@ -34,6 +34,21 @@ This project is a modernized Tiddly Drive app built with Svelte 5 and Vite. It i
 - When the wiki loads, TiddlyWiki manages when to save. The app hooks into TW’s saver to upload to Drive.
 - The implementation uses media uploads (Drive v3) plus ETag (If-Match) for conflict safety, and coalesces rapid autosaves to prevent interleaving.
 
+## Temporarily widening Google Drive OAuth scope
+
+For testing or app review, you may need to use the broader `drive` scope (for example, to enable Google Drive's "Open with" flow before the app is fully verified). You can opt-in via a URL query parameter; no rebuild is required, and it works locally and in production.
+
+- Default scope: `drive.file` (least privilege)
+- Override via query param:
+  - `?td_scope=drive` → uses `https://www.googleapis.com/auth/drive`
+  - `?td_scope=drive.file` or omit param → uses `https://www.googleapis.com/auth/drive.file`
+
+Notes:
+
+- When the app is using the broader `drive` scope, the console will show:
+  `[tiddlydrive] Using non-default OAuth scope: drive`
+- The override does not persist; remove the query param to return to the default.
+
 ## Building & assets
 
 - Build the Svelte app:

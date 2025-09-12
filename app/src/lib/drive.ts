@@ -69,8 +69,7 @@ export const loadFile = async (iframe: HTMLIFrameElement): Promise<LoadResult> =
         'Confirm the file ID is correct (no extra characters).',
         'Ensure you are logged into the same Google account that owns / can access the file.',
         'If the file lives in a Shared Drive, supportsAllDrives=true is now added (retry after refresh).',
-        'If you are manually crafting the ?state= parameter while using only the drive.file scope, the token may NOT grant this file (drive.file only covers files the user opened via the official Drive UI/Open-with or a Picker).',
-        'For local/manual testing you can temporarily broaden the scope to drive.readonly (set VITE_GOOGLE_SCOPES). Revert before final review.'
+        'If you are manually crafting the ?state= parameter while using only the drive.file scope, the token may NOT grant this file (drive.file only covers files the user opened via the official Drive UI/Open-with or a Picker).'
       ];
       throw new Error('File not found (404). Possible causes:\n- ' + hints.join('\n- '));
     }

@@ -1,9 +1,7 @@
 import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
 
-const SCOPES = import.meta.env.VITE_GOOGLE_SCOPES || 'https://www.googleapis.com/auth/drive.file';
-const CLIENT_ID =
-  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
-  '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
+const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
 
 let tokenClient: GoogleTokenClient | null = null;
 let accessToken: string | null = null;
@@ -11,6 +9,10 @@ let tokenExpiry = 0;
 let requesting = false;
 const pending: Array<(t: string) => void> = [];
 const STORAGE_KEY = 'td2:oauth';
+const SCOPE_QUERY_PARAM = 'td_scope';
+
+// Track the scope used for the current tokenClient init
+let currentScope: string | null = null;
 
 type CachedToken = {
   accessToken: string;
@@ -80,6 +82,48 @@ const waitForGoogleIdentity = async (): Promise<void> =>
   });
 
 /**
+ * Resolve effective scope from URL param. Only 'drive' is allowed as an override.
+ * Anything else falls back to default 'drive.file'.
+ *
+ * @returns Full scope URL when present in URL, otherwise null
+ */
+const resolveScopeFromUrl = (): string | null => {
+  try {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get(SCOPE_QUERY_PARAM)?.trim();
+    if (raw === 'drive') return 'https://www.googleapis.com/auth/drive';
+    if (raw === 'drive.file') return 'https://www.googleapis.com/auth/drive.file';
+  } catch {
+    /* ignore */
+  }
+  return null;
+};
+
+/**
+ * Determine the effective OAuth scope from URL > env.
+ *
+ * @returns The scope URL to request
+ */
+const determineScope = (): string => {
+  // 1) URL override: only 'drive' or 'drive.file'
+  const urlScope = resolveScopeFromUrl();
+  if (urlScope) return urlScope;
+
+  // 2) Environment default
+  return DEFAULT_SCOPE;
+};
+
+/**
+ * Get the currently configured effective OAuth scope.
+ *
+ * @returns The scope URL currently selected
+ */
+export const getOAuthScope = (): string => {
+  if (!currentScope) currentScope = determineScope();
+  return currentScope;
+};
+
+/**
  * Initializes the Google Identity Services token client.
  */
 export const initAuth = async (): Promise<void> => {
@@ -89,13 +133,20 @@ export const initAuth = async (): Promise<void> => {
     throw new Error('Google Identity Services not available');
   }
   // Provide a placeholder callback; real callback is set per request.
+  const scope = getOAuthScope();
+  // Surface when a broader-than-default scope is in use to help testing and reviews
+  if (scope === 'https://www.googleapis.com/auth/drive') {
+    // Intentionally using console to make this obvious in dev tools
+    console.log('[tiddlydrive] Using non-default OAuth scope: drive');
+  }
   tokenClient = gis.initTokenClient({
     client_id: CLIENT_ID,
-    scope: SCOPES,
+    scope,
     callback: () => {
       /* replaced per request */
     }
   }) as GoogleTokenClient;
+  currentScope = scope;
 };
 
 /**
@@ -146,7 +197,14 @@ export const getAccessToken = async (opts: { prompt?: 'consent' | '' } = {}): Pr
   // Try to reuse a cached valid token from storage
   loadCachedToken();
   if (accessToken && Date.now() < tokenExpiry) return accessToken;
-  if (!tokenClient) await initAuth();
+  // Ensure token client is initialized with the currently configured scope
+  if (!tokenClient) {
+    await initAuth();
+  } else if (currentScope !== getOAuthScope()) {
+    // Scope changed since last init; re-init to apply new scope
+    tokenClient = null;
+    await initAuth();
+  }
   if (requesting) return new Promise((res) => pending.push(res));
   requesting = true;
   try {
