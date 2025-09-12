@@ -1,5 +1,7 @@
 # Tiddly Drive 2
 
+[![Tiddly Drive Logo (inverted)](branding/logo-full-inverted.svg)](branding/logo-full-inverted.svg)
+
 [![Open App](https://img.shields.io/badge/Open%20App-tiddlydrive.tonyneuhold.com-0a7250?style=for-the-badge&logo=google-chrome&logoColor=white)](https://tiddlydrive.tonyneuhold.com)
 
 Tiddly Drive 2 lets you open and save single-file TiddlyWiki documents on Google Drive. This repository contains a modernized implementation built with Svelte.
