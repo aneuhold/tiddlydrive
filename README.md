@@ -1,10 +1,10 @@
-# Tiddly Drive
+# Tiddly Drive 2
 
 [![Open App](https://img.shields.io/badge/Open%20App-tiddlydrive.tonyneuhold.com-0a7250?style=for-the-badge&logo=google-chrome&logoColor=white)](https://tiddlydrive.tonyneuhold.com)
 
-Tiddly Drive lets you open and save single-file TiddlyWiki documents on Google Drive. This repository contains a modernized implementation built with Svelte.
+Tiddly Drive 2 lets you open and save single-file TiddlyWiki documents on Google Drive. This repository contains a modernized implementation built with Svelte.
 
-Huge thanks to the original creator LordRatte for the all the years of supporting this project and all the original code!!! See [the original repo here](https://github.com/tiddlydrive/tiddlydrive.github.io).
+Huge thanks to the original creator [LordRatte](https://github.com/LordRatte) for the all the years of supporting this project and all the original code!!! See [the original repo here](https://github.com/tiddlydrive/tiddlydrive.github.io).
 
 ## User guide (normal usage)
 
