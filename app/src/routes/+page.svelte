@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { getAccessToken, initAuth } from '$lib/auth';
-  import { loadFile, parseState, registerWikiSaver, save } from '$lib/drive';
+  import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
   import { showToast } from '$lib/ui';
   import UiHost from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
@@ -12,7 +12,10 @@
   let status = $state<Status>('initializing');
   let error = $state<string | null>(null);
   let showSettings = $state(false);
+  let settingsDialog = $state<HTMLDialogElement | null>(null);
 
+  // Legacy cookie writer is no longer used; prefs persist via localStorage.
+  const PREFS_KEY = 'td2:prefs';
   type Prefs = { autosave: boolean; hotkey: boolean; disableSave: boolean };
   const prefs = $state<Prefs>({ autosave: true, hotkey: true, disableSave: false });
 
@@ -33,9 +36,6 @@
     );
   };
 
-  // Legacy cookie writer is no longer used; prefs persist via localStorage.
-
-  const PREFS_KEY = 'td2:prefs';
   /** Load prefs from localStorage (fallback to cookies for backward-compat). */
   const loadPrefs = (): void => {
     try {
@@ -75,7 +75,7 @@
       if (!prefs.hotkey) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        void manualSave();
+        manualSave();
       }
     };
     window.addEventListener('keydown', handler);
@@ -84,17 +84,22 @@
     };
   };
 
-  /** Trigger a manual save ignoring autosave state. */
-  const manualSave = async (): Promise<void> => {
+  /** Trigger a save via TiddlyWiki's saver (no direct HTML serialization). */
+  const manualSave = (): void => {
     if (prefs.disableSave) {
       showToast('Save disabled');
       return;
     }
     try {
-      const doc = iframeEl?.contentWindow?.document;
-      if (!doc) return;
-      const html = `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
-      await save(html, {});
+      const win = iframeEl?.contentWindow as unknown as {
+        $tw?: { saverHandler?: { saveWiki?: () => void } };
+      };
+      const saveWiki = win.$tw?.saverHandler?.saveWiki;
+      if (typeof saveWiki === 'function') {
+        saveWiki();
+      } else {
+        showToast('TiddlyWiki not ready');
+      }
     } catch (e) {
       console.error(e);
       error = 'Save failed';
@@ -142,6 +147,16 @@
       if (unregisterHotkey) unregisterHotkey();
     };
   });
+
+  $effect(() => {
+    const dlg = settingsDialog;
+    if (!dlg) return;
+    if (showSettings) {
+      if (!dlg.open) dlg.showModal();
+    } else if (dlg.open) {
+      dlg.close();
+    }
+  });
 </script>
 
 <svelte:head>
@@ -165,17 +180,6 @@
       {#if status === 'loading'}
         <div class="overlay">Loading file…</div>
       {/if}
-      {#if showSettings}
-        <div
-          class="settings-backdrop"
-          role="button"
-          tabindex="0"
-          onclick={() => (showSettings = false)}
-          onkeydown={(e) => {
-            if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') showSettings = false;
-          }}
-        ></div>
-      {/if}
       <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
       <button
         class="settings-fab"
@@ -184,8 +188,16 @@
       >
         {showSettings ? '×' : '⚙'}
       </button>
-      {#if showSettings}
-        <aside class="panel settings-overlay">
+      <dialog
+        bind:this={settingsDialog}
+        class="settings-dialog"
+        onclose={() => (showSettings = false)}
+        onclick={(e) => {
+          if (e.target === settingsDialog) showSettings = false;
+        }}
+        aria-label="Settings"
+      >
+        <div class="panel">
           <h3>Settings</h3>
           <label
             ><input
@@ -215,11 +227,11 @@
             /> Disable Drive Save</label
           >
           <div class="actions">
-            <button onclick={manualSave}>Save Now</button>
             <button onclick={authenticate}>Authenticate</button>
+            <button class="secondary" onclick={() => (showSettings = false)}>Close</button>
           </div>
-        </aside>
-      {/if}
+        </div>
+      </dialog>
     </div>
   {/if}
   <UiHost />
@@ -274,21 +286,16 @@
     cursor: pointer;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
   }
-  .settings-overlay {
-    position: absolute;
-    bottom: 0.75rem;
-    right: 0.75rem;
-    z-index: 40;
-    background: #fff;
-    max-height: calc(100vh - 1.5rem);
-    overflow-y: auto;
-    width: 270px;
+  dialog.settings-dialog {
+    border: none;
+    border-radius: 12px;
+    padding: 0;
+    max-width: min(92vw, 420px);
+    width: 92vw;
   }
-  .settings-backdrop {
-    position: absolute;
-    inset: 0;
-    z-index: 30;
-    background: transparent;
+  :global(dialog.settings-dialog::backdrop) {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(1px);
   }
   .panel {
     background: #fff;
@@ -326,6 +333,10 @@
     font-weight: 600;
     font-size: 0.8rem;
     letter-spacing: 0.5px;
+  }
+  button.secondary {
+    background: #e1e1e1;
+    color: #222;
   }
   button:hover {
     filter: brightness(1.08);

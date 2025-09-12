@@ -12,6 +12,9 @@ let currentFileId: string | null = null;
 let currentFileName = 'wiki.html';
 let etag: string | null = null;
 let wikiSaverRegistered = false;
+let saving = false;
+let pendingSave: { html: string; autosave: boolean } | null = null;
+const pendingResolvers: Array<(ok: boolean) => void> = [];
 
 export interface LoadResult {
   meta: DriveFileMeta;
@@ -102,9 +105,6 @@ export const loadFile = async (iframe: HTMLIFrameElement): Promise<LoadResult> =
  */
 export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions = {}): void => {
   if (wikiSaverRegistered) return;
-  /**
-   *
-   */
   const attempt = (): void => {
     const win = iframe.contentWindow;
     const tw: TiddlyWiki | undefined = (win as unknown as { $tw?: TiddlyWiki } | null)?.$tw;
@@ -161,46 +161,75 @@ export const save = async (
   { autosave = false }: SaveOptions = {}
 ): Promise<boolean> => {
   if (!currentFileId) throw new Error('File not loaded');
-  let token = await getAccessToken();
-  const boundary = 'td2-' + Math.random().toString(36).slice(2);
-  const metadata = { name: currentFileName };
-  const body = [
-    `--${boundary}`,
-    'Content-Type: application/json; charset=UTF-8',
-    '',
-    JSON.stringify(metadata),
-    `--${boundary}`,
-    'Content-Type: text/html; charset=UTF-8',
-    '',
-    html,
-    `--${boundary}--`,
-    ''
-  ].join('\r\n');
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': `multipart/related; boundary=${boundary}`,
-    ...(etag ? { 'If-Match': etag } : {})
-  };
+  // Queue latest save request and process with single-flight & debounce (for autosave).
+  return new Promise<boolean>((resolve) => {
+    pendingSave = { html, autosave };
+    pendingResolvers.push(resolve);
+    void processSaveQueue();
+  });
+};
 
-  /**
-   * Performs the multipart PATCH upload to Drive.
-   *
-   * @returns Fetch Response of the upload
-   */
+/**
+ * Runs the queued save operations one at a time, coalescing rapid autosaves.
+ */
+const processSaveQueue = async (): Promise<void> => {
+  if (saving) return;
+  while (pendingSave) {
+    saving = true;
+    // Snapshot current pending payload and clear queue slot
+    const { html, autosave } = pendingSave;
+    pendingSave = null;
+    // Collect resolvers waiting for this upload
+    const resolvers = pendingResolvers.splice(0);
+    // Debounce autosaves slightly to coalesce bursts
+    if (autosave) {
+      await new Promise((r) => setTimeout(r, 800));
+      // If newer content arrived during debounce, the loop will see it in the while check
+    }
+    let ok = false;
+    try {
+      ok = await uploadHtmlMedia(html);
+    } catch (e) {
+      console.warn('[td2/drive] upload error', e);
+      ok = false;
+    }
+    resolvers.forEach((r) => {
+      r(ok);
+    });
+    saving = false;
+  }
+};
+
+/**
+ * Uploads html using media upload (simpler and robust) with If-Match handling and permissions retry.
+ *
+ * @param html The full HTML content to upload
+ * @returns Promise resolving to true on success, false when a handled conflict occurred
+ */
+const uploadHtmlMedia = async (html: string): Promise<boolean> => {
+  if (!currentFileId) throw new Error('File not loaded');
+  let token = await getAccessToken();
   const doUpload = async (): Promise<Response> =>
     fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${currentFileId}?uploadType=multipart&supportsAllDrives=true&fields=id,modifiedTime,version`,
-      { method: 'PATCH', headers: { ...headers, Authorization: `Bearer ${token}` }, body }
+      `https://www.googleapis.com/upload/drive/v3/files/${currentFileId}?uploadType=media&supportsAllDrives=true&fields=id,modifiedTime,version`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'text/html; charset=UTF-8',
+          ...(etag ? { 'If-Match': etag } : {})
+        },
+        body: html
+      }
     );
 
   let resp = await doUpload();
-  // If insufficient permissions try once more after forcing consent (maybe scope changed recently)
   if (resp.status === 403) {
     try {
       token = await getAccessToken({ prompt: 'consent' });
       resp = await doUpload();
     } catch (_) {
-      // ignore; will fall through to generic handler
+      // ignore; fall through
     }
   }
   if (resp.status === 412 || resp.status === 409) {
@@ -211,8 +240,8 @@ export const save = async (
     let detail = '';
     try {
       detail = await resp.text();
-    } catch (err) {
-      console.warn('[td2/drive] save 403 re-request token failed', err);
+    } catch (_err) {
+      /* ignore */
     }
     console.warn('[td2/drive] save failed', resp.status, detail);
     if (resp.status === 403) {
@@ -226,6 +255,6 @@ export const save = async (
     throw new Error('Save failed ' + resp.status.toString() + ' ' + detail);
   }
   etag = resp.headers.get('etag') || etag;
-  showToast(autosave ? 'Autosaved' : 'Saved');
+  showToast('Saved');
   return true;
 };
