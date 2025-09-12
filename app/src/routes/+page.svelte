@@ -1,25 +1,33 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getAccessToken, initAuth } from '$lib/auth';
-  import { loadFile, parseState, save } from '$lib/drive';
+  import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
+  import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
   import { showToast } from '$lib/ui';
-  import { onMount } from 'svelte';
+  import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
+  import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
+  import UiHost from '$lib/ui/UiHost.svelte';
+  import { onMount, tick } from 'svelte';
 
-  let iframeEl: HTMLIFrameElement;
-  let hasState = false;
-  let loading = true;
-  let error: string | null = null;
-  let autosave = true;
-  let hotkey = true;
-  let disableSave = false;
+  type Status = 'initializing' | 'no-state' | 'loading' | 'ready' | 'error';
+
+  let iframeEl = $state<HTMLIFrameElement | null>(null);
+  let status = $state<Status>('initializing');
+  let error = $state<string | null>(null);
+  let showSettings = $state(false);
+  let hideFab = $state(false);
+
+  // Legacy cookie writer is no longer used; prefs persist via localStorage.
+  const PREFS_KEY = 'td2:prefs';
+  type Prefs = { autosave: boolean; hotkey: boolean; disableSave: boolean };
+  const prefs = $state<Prefs>({ autosave: true, hotkey: true, disableSave: false });
 
   /**
    * Read a simple cookie value by name.
    *
    * @param name cookie name
-   * @returns value or null
+   * @returns cookie value or null when missing
    */
-  function readCookie(name: string): string | null {
+  const readCookie = (name: string): string | null => {
     const nameEQ = name + '=';
     return (
       document.cookie
@@ -28,96 +36,125 @@
         .find((c) => c.startsWith(nameEQ))
         ?.substring(nameEQ.length) || null
     );
-  }
+  };
+
+  /** Load prefs from localStorage (fallback to cookies for backward-compat). */
+  const loadPrefs = (): void => {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<Prefs>;
+        prefs.autosave = parsed.autosave ?? prefs.autosave;
+        prefs.hotkey = parsed.hotkey ?? prefs.hotkey;
+        prefs.disableSave = parsed.disableSave ?? prefs.disableSave;
+        return;
+      }
+    } catch {
+      /* ignore */
+    }
+    // Back-compat with old cookies
+    prefs.autosave = readCookie('enableautosave') !== 'false';
+    prefs.hotkey = readCookie('enablehotkeysave') !== 'false';
+    prefs.disableSave = readCookie('disablesave') === 'true';
+  };
+
+  /** Persist preferences to localStorage. */
+  const persistPrefs = (): void => {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      /* ignore */
+    }
+  };
+
   /**
-   * Write a cookie with expiration in days.
+   * Register cmd/ctrl + S handler.
    *
-   * @param name cookie name
-   * @param value cookie value
-   * @param days number of days until expiry
+   * @returns Cleanup function to unregister the handler
    */
-  function writeCookie(name: string, value: string, days: number) {
-    const expiry = Date.now() + days * 24 * 60 * 60 * 1000;
-    const date = new Date(expiry);
-    document.cookie = `${name}=${value}; expires=${date.toUTCString()}; path=/`;
-  }
-  /** Sync UI boolean prefs from stored cookies. */
-  function syncPrefsFromCookies() {
-    autosave = readCookie('enableautosave') !== 'false';
-    hotkey = readCookie('enablehotkeysave') !== 'false';
-    disableSave = readCookie('disablesave') === 'true';
-  }
-  /**
-   * Persist a boolean preference both logically and as a cookie.
-   *
-   * @param name semantic name (unused placeholder for potential future state map)
-   * @param value boolean value to persist
-   * @param cookie cookie key
-   */
-  function persist(name: string, value: boolean, cookie: string) {
-    writeCookie(cookie, value ? 'true' : 'false', 364);
-  }
-  let autosaveInterval: number | null = null;
-  /** Start (or restart) autosave interval if enabled. */
-  function startAutosaveLoop() {
-    if (autosaveInterval) window.clearInterval(autosaveInterval);
-    autosaveInterval = window.setInterval(() => {
-      if (!autosave || disableSave) return;
-      const doc = iframeEl.contentWindow?.document;
-      if (!doc) return;
-      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-      // Fire and forget
-      void save(html, { autosave: true });
-    }, 5000);
-  }
-  /** Register cmd/ctrl + S handler. */
-  function registerHotkey() {
-    window.addEventListener('keydown', (e) => {
-      if (!hotkey) return;
+  const registerHotkey = (): (() => void) => {
+    const handler = (e: KeyboardEvent): void => {
+      if (!prefs.hotkey) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         manualSave();
       }
-    });
-  }
-  /** Trigger a manual save ignoring autosave state. */
-  async function manualSave() {
-    if (disableSave) {
+    };
+    window.addEventListener('keydown', handler);
+    return () => {
+      window.removeEventListener('keydown', handler);
+    };
+  };
+
+  /** Trigger a save via TiddlyWiki's saver (no direct HTML serialization). */
+  const manualSave = (): void => {
+    if (prefs.disableSave) {
       showToast('Save disabled');
       return;
     }
     try {
-      const doc = iframeEl.contentWindow?.document;
-      if (!doc) return;
-      const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-      await save(html, {});
+      const win = iframeEl?.contentWindow as unknown as {
+        $tw?: { saverHandler?: { saveWiki?: () => void } };
+      };
+      const saveWiki = win.$tw?.saverHandler?.saveWiki;
+      if (typeof saveWiki === 'function') {
+        saveWiki();
+      } else {
+        showToast('TiddlyWiki not ready');
+      }
     } catch (e) {
       console.error(e);
       error = 'Save failed';
     }
-  }
-  /** Initiate interactive auth flow. */
-  async function authenticate() {
-    await getAccessToken({ interactive: true });
-  }
-  onMount(async () => {
-    syncPrefsFromCookies();
-    hasState = !!parseState();
-    await initAuth();
-    if (!hasState) {
-      loading = false;
+  };
+
+  /** Initiate interactive auth flow, or notify if already authenticated. */
+  const authenticate = async (): Promise<void> => {
+    if (hasValidToken()) {
+      showToast('Already authenticated');
       return;
     }
-    try {
-      await loadFile(iframeEl);
-      startAutosaveLoop();
-      registerHotkey();
-    } catch (e) {
-      error = (e as Error).message;
-    } finally {
-      loading = false;
-    }
+    await getAccessToken();
+  };
+
+  onMount(() => {
+    let unregisterHotkey: (() => void) | null = null;
+    (async () => {
+      loadPrefs();
+      const hasState = !!parseState();
+      if (!hasState) {
+        status = 'no-state';
+        return;
+      }
+      await initAuth();
+      status = 'loading';
+      // Mount iframe before attempting load
+      await tick();
+      try {
+        if (iframeEl === null) {
+          error = 'Internal error: frame missing';
+          status = 'error';
+          return;
+        }
+        const frame = iframeEl;
+        await loadFile(frame);
+        registerWikiSaver(frame, {
+          disableSave: () => prefs.disableSave,
+          autosaveEnabled: () => prefs.autosave
+        });
+        unregisterHotkey = registerHotkey();
+        status = 'ready';
+      } catch (e) {
+        error = (e as Error).message;
+        status = 'error';
+      }
+    })();
+    return () => {
+      if (unregisterHotkey) unregisterHotkey();
+    };
   });
+
+  // settings dialog open/close is controlled in the component
 </script>
 
 <svelte:head>
@@ -125,12 +162,10 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </svelte:head>
 
-<main class="app-shell">
-  {#if loading}
-    <div class="loader">Loading…</div>
-  {:else if error}
+<main class="app-shell" class:hasfile={status === 'ready'}>
+  {#if status === 'error' && error}
     <div class="error">{error}</div>
-  {:else if !hasState}
+  {:else if status === 'no-state'}
     <div class="nofile">
       <h2>No file state provided</h2>
       <p>Launch this page via Google Drive “Open with”.</p>
@@ -139,43 +174,37 @@
       </p>
     </div>
   {:else}
-    <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
-  {/if}
-  <aside class="panel">
-    <h3>Settings</h3>
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={autosave}
-        on:change={() => {
-          persist('enableautosave', autosave, 'enableautosave');
-          startAutosaveLoop();
+    <div class="frame-wrapper">
+      {#if status === 'loading'}
+        <div class="overlay">Loading file…</div>
+      {/if}
+      <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
+      {#if !hideFab}
+        <FloatingActionButton
+          open={showSettings}
+          onClick={() => (showSettings = !showSettings)}
+          label="Toggle settings"
+        />
+      {/if}
+      <SettingsDialog
+        open={showSettings}
+        {prefs}
+        {hideFab}
+        onAuthenticate={authenticate}
+        onClose={() => (showSettings = false)}
+        onPrefsChange={({ key, value }) => {
+          if (key === 'autosave') prefs.autosave = value;
+          else if (key === 'hotkey') prefs.hotkey = value;
+          else if (key === 'disableSave') prefs.disableSave = value;
+          persistPrefs();
         }}
-      /> Autosave</label
-    >
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={hotkey}
-        on:change={() => {
-          persist('enablehotkeysave', hotkey, 'enablehotkeysave');
+        onHideFabChange={(value) => {
+          hideFab = value;
         }}
-      /> Hotkey Save</label
-    >
-    <label
-      ><input
-        type="checkbox"
-        bind:checked={disableSave}
-        on:change={() => {
-          persist('disablesave', disableSave, 'disablesave');
-        }}
-      /> Disable Drive Save</label
-    >
-    <div class="actions">
-      <button on:click={manualSave}>Save Now</button>
-      <button on:click={authenticate}>Authenticate</button>
+      />
     </div>
-  </aside>
+  {/if}
+  <UiHost />
 </main>
 
 <style>
@@ -183,78 +212,55 @@
     --color-primary: hsla(164, 95%, 28%, 1);
     --color-shadow-light: rgba(0, 0, 0, 0.06);
   }
+  :global(html),
+  :global(body),
   .app-shell {
-    display: grid;
-    grid-template-columns: 1fr 260px;
-    gap: 1rem;
-    padding: 1rem;
-    align-items: start;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+  .app-shell {
     font-family: system-ui, sans-serif;
-    background: #f5f7f8;
+    background: #111;
+    color: #222;
     min-height: 100vh;
+    position: relative;
+  }
+  .frame-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
   }
   .wiki-frame {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    min-height: 80vh;
-    border: 1px solid var(--color-shadow-light);
-    border-radius: 8px;
+    height: 100%;
+    border: 0;
     background: #fff;
   }
-  .panel {
-    background: #fff;
-    padding: 0.9rem 1rem 1.2rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px var(--color-shadow-light);
-    font-size: 0.85rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-  .panel h3 {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
-  }
-  .panel label {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    font-weight: 500;
-  }
-  .actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-  }
-  button {
-    cursor: pointer;
-    background: var(--color-primary);
-    color: #fff;
-    border: none;
-    padding: 0.55rem 0.9rem;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.8rem;
-    letter-spacing: 0.5px;
-  }
-  button:hover {
-    filter: brightness(1.08);
-  }
-  .loader,
+  /* button base styles remain in child components */
   .error,
   .nofile {
-    grid-column: 1 / span 2;
     background: #fff;
     padding: 2rem;
     border-radius: 12px;
     box-shadow: 0 2px 6px var(--color-shadow-light);
+    margin: 2rem;
   }
-  @media (max-width: 960px) {
-    .app-shell {
-      grid-template-columns: 1fr;
-    }
-    .panel {
-      order: -1;
-    }
+  /* responsive tweaks handled by dialog native sizing */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+    color: #fff;
+    font-size: 1.2rem;
+    z-index: 10;
+    backdrop-filter: blur(1px);
   }
 </style>
