@@ -1,8 +1,10 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getAccessToken, initAuth } from '$lib/auth';
+  import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
   import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
   import { showToast } from '$lib/ui';
+  import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
+  import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
   import UiHost from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
 
@@ -12,7 +14,7 @@
   let status = $state<Status>('initializing');
   let error = $state<string | null>(null);
   let showSettings = $state(false);
-  let settingsDialog = $state<HTMLDialogElement | null>(null);
+  let hideFab = $state(false);
 
   // Legacy cookie writer is no longer used; prefs persist via localStorage.
   const PREFS_KEY = 'td2:prefs';
@@ -106,8 +108,12 @@
     }
   };
 
-  /** Initiate interactive auth flow. */
+  /** Initiate interactive auth flow, or notify if already authenticated. */
   const authenticate = async (): Promise<void> => {
+    if (hasValidToken()) {
+      showToast('Already authenticated');
+      return;
+    }
     await getAccessToken();
   };
 
@@ -148,15 +154,7 @@
     };
   });
 
-  $effect(() => {
-    const dlg = settingsDialog;
-    if (!dlg) return;
-    if (showSettings) {
-      if (!dlg.open) dlg.showModal();
-    } else if (dlg.open) {
-      dlg.close();
-    }
-  });
+  // settings dialog open/close is controlled in the component
 </script>
 
 <svelte:head>
@@ -181,57 +179,29 @@
         <div class="overlay">Loading file…</div>
       {/if}
       <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
-      <button
-        class="settings-fab"
-        onclick={() => (showSettings = !showSettings)}
-        aria-label="Toggle settings"
-      >
-        {showSettings ? '×' : '⚙'}
-      </button>
-      <dialog
-        bind:this={settingsDialog}
-        class="settings-dialog"
-        onclose={() => (showSettings = false)}
-        onclick={(e) => {
-          if (e.target === settingsDialog) showSettings = false;
+      {#if !hideFab}
+        <FloatingActionButton
+          open={showSettings}
+          onClick={() => (showSettings = !showSettings)}
+          label="Toggle settings"
+        />
+      {/if}
+      <SettingsDialog
+        open={showSettings}
+        {prefs}
+        {hideFab}
+        onAuthenticate={authenticate}
+        onClose={() => (showSettings = false)}
+        onPrefsChange={({ key, value }) => {
+          if (key === 'autosave') prefs.autosave = value;
+          else if (key === 'hotkey') prefs.hotkey = value;
+          else if (key === 'disableSave') prefs.disableSave = value;
+          persistPrefs();
         }}
-        aria-label="Settings"
-      >
-        <div class="panel">
-          <h3>Settings</h3>
-          <label
-            ><input
-              type="checkbox"
-              bind:checked={prefs.autosave}
-              onchange={() => {
-                persistPrefs();
-              }}
-            /> Autosave</label
-          >
-          <label
-            ><input
-              type="checkbox"
-              bind:checked={prefs.hotkey}
-              onchange={() => {
-                persistPrefs();
-              }}
-            /> Hotkey Save</label
-          >
-          <label
-            ><input
-              type="checkbox"
-              bind:checked={prefs.disableSave}
-              onchange={() => {
-                persistPrefs();
-              }}
-            /> Disable Drive Save</label
-          >
-          <div class="actions">
-            <button onclick={authenticate}>Authenticate</button>
-            <button class="secondary" onclick={() => (showSettings = false)}>Close</button>
-          </div>
-        </div>
-      </dialog>
+        onHideFabChange={(value) => {
+          hideFab = value;
+        }}
+      />
     </div>
   {/if}
   <UiHost />
@@ -271,76 +241,7 @@
     border: 0;
     background: #fff;
   }
-  .settings-fab {
-    position: absolute;
-    bottom: 0.75rem;
-    right: 0.75rem;
-    z-index: 50;
-    background: var(--color-primary);
-    color: #fff;
-    border: none;
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
-    font-size: 1.1rem;
-    cursor: pointer;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  }
-  dialog.settings-dialog {
-    border: none;
-    border-radius: 12px;
-    padding: 0;
-    max-width: min(92vw, 420px);
-    width: 92vw;
-  }
-  :global(dialog.settings-dialog::backdrop) {
-    background: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(1px);
-  }
-  .panel {
-    background: #fff;
-    padding: 0.9rem 1rem 1.2rem;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px var(--color-shadow-light);
-    font-size: 0.85rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-  .panel h3 {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
-  }
-  .panel label {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    font-weight: 500;
-  }
-  .actions {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-  }
-  button {
-    cursor: pointer;
-    background: var(--color-primary);
-    color: #fff;
-    border: none;
-    padding: 0.55rem 0.9rem;
-    border-radius: 6px;
-    font-weight: 600;
-    font-size: 0.8rem;
-    letter-spacing: 0.5px;
-  }
-  button.secondary {
-    background: #e1e1e1;
-    color: #222;
-  }
-  button:hover {
-    filter: brightness(1.08);
-  }
+  /* button base styles remain in child components */
   .error,
   .nofile {
     background: #fff;
@@ -349,11 +250,7 @@
     box-shadow: 0 2px 6px var(--color-shadow-light);
     margin: 2rem;
   }
-  @media (max-width: 960px) {
-    .settings-overlay {
-      width: 85%;
-    }
-  }
+  /* responsive tweaks handled by dialog native sizing */
   .overlay {
     position: absolute;
     inset: 0;

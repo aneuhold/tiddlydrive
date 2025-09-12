@@ -50,6 +50,17 @@ const persistToken = (): void => {
 };
 
 /**
+ * Returns true when a valid, non-expired OAuth token is already available (cached or in-memory).
+ * This will try to hydrate from localStorage on first use.
+ *
+ * @returns boolean indicating whether a valid token exists
+ */
+export const hasValidToken = (): boolean => {
+  loadCachedToken();
+  return !!accessToken && Date.now() < tokenExpiry;
+};
+
+/**
  * Waits for Google Identity Services to be available on window.
  *
  * @returns Promise that resolves when GIS is available
