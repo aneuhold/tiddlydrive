@@ -138,7 +138,7 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions)
           } catch (err) {
             console.warn('[td2/drive] failed to reset TW dirty status', err);
           }
-          callback();
+          // Purposefully skip the callback here, so it doesn't show the built-in "saved" toast.
           return true;
         } catch (e) {
           callback((e as Error).message);

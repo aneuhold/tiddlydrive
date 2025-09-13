@@ -62,7 +62,6 @@ export const getTiddlyWikiFromWindow = (win: Window | null): TiddlyWiki | undefi
  * @param doc The document to apply the favicon to
  */
 const applyFaviconFromWiki = (tw: TiddlyWiki, doc: Document): void => {
-  console.log('Applying favicon from wiki');
   const tiddler = tw.wiki.getTiddler('$:/favicon.ico');
   if (!tiddler) return;
   const raw = tiddler.fields.text.trim();
