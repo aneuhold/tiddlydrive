@@ -64,7 +64,6 @@ export type SaveFunction = (html: string, options?: SaveOptions) => Promise<bool
 export type SaverRegistrationConfig = {
   name: string;
   priority: number;
-  capabilities: string[];
   saveFunction: SaveFunction;
   onSaveSuccess?: (tw: TiddlyWiki, prefs: Prefs) => void;
 };
@@ -75,6 +74,9 @@ export type SaverRegistrationConfig = {
 class TiddlyWikiService {
   private latestTWObject: TiddlyWiki | undefined = undefined;
   private originalDocumentTitle: string | undefined;
+  private currentSaverConfig: SaverRegistrationConfig | undefined = undefined;
+  private currentIframe: HTMLIFrameElement | undefined = undefined;
+  private currentSaverOptions: SaverOptions | undefined = undefined;
 
   /**
    * Returns the TiddlyWiki ($tw) object from a window, if available.
@@ -89,12 +91,10 @@ class TiddlyWikiService {
   };
 
   /**
-   * Gets the latest cached TiddlyWiki object.
-   *
-   * @returns The latest TiddlyWiki object or undefined
+   * Saves the current wiki using TiddlyWiki's built-in saveWiki method.
    */
-  getLatestTWObject = (): TiddlyWiki | undefined => {
-    return this.latestTWObject;
+  saveWiki = async (): Promise<void> => {
+    await this.latestTWObject?.saverHandler?.saveWiki();
   };
 
   /**
@@ -105,6 +105,77 @@ class TiddlyWikiService {
    * @param config Configuration for the saver to register
    */
   registerSaver = (
+    iframe: HTMLIFrameElement,
+    opts: SaverOptions,
+    config: SaverRegistrationConfig
+  ): void => {
+    // Store references for dynamic registration/unregistration
+    this.currentIframe = iframe;
+    this.currentSaverOptions = opts;
+    this.currentSaverConfig = config;
+
+    // Perform initial registration
+    this.performSaverRegistration(iframe, opts, config);
+  };
+
+  /**
+   * Unregisters the TiddlyDrive saver from TiddlyWiki's saver pipeline.
+   */
+  unregisterSaver = (): void => {
+    const tw = this.latestTWObject;
+    if (!tw || !tw.saverHandler || !Array.isArray(tw.saverHandler.savers)) {
+      return;
+    }
+
+    const index = tw.saverHandler.savers.findIndex(
+      (saver) => saver.info.name === this.currentSaverConfig?.name
+    );
+    if (index >= 0) {
+      tw.saverHandler.savers.splice(index, 1);
+      console.log(`[td2/tw] Unregistered saver`);
+    }
+  };
+
+  /**
+   * Updates saver registration based on current preferences.
+   * Used when preferences change to update saver registration state.
+   *
+   * @param prefs Current preferences
+   */
+  updateSaverRegistration = (prefs: Prefs): void => {
+    if (!this.currentIframe || !this.currentSaverOptions || !this.currentSaverConfig) return;
+
+    const tw = this.latestTWObject;
+    if (!tw || !tw.saverHandler) return;
+
+    const isRegistered = tw.saverHandler.savers.some(
+      (saver) => saver.info.name === this.currentSaverConfig?.name
+    );
+
+    // Determine if saver should be active (only based on autosave preference)
+    const shouldBeActive = prefs.autosave;
+
+    if (shouldBeActive && !isRegistered) {
+      // Register the saver
+      this.performSaverRegistration(
+        this.currentIframe,
+        this.currentSaverOptions,
+        this.currentSaverConfig
+      );
+    } else if (!shouldBeActive && isRegistered) {
+      // Unregister the saver
+      this.unregisterSaver();
+    }
+  };
+
+  /**
+   * Internal method that performs the actual saver registration.
+   *
+   * @param iframe The iframe containing the wiki
+   * @param opts Saver options including preferences
+   * @param config Configuration for the saver to register
+   */
+  private performSaverRegistration = (
     iframe: HTMLIFrameElement,
     opts: SaverOptions,
     config: SaverRegistrationConfig
@@ -125,29 +196,33 @@ class TiddlyWikiService {
         return;
       }
 
+      // Check if this saver should be active based on current preferences
+      const prefs = opts.preferences();
+      if (!prefs.autosave) {
+        console.log(`[td2/tw] Skipping registration of ${config.name} - autosave disabled`);
+        return;
+      }
+
       // Apply page customizations from wiki once TW is available
-      this.applyPageCustomizationsFromWiki(opts.preferences(), tw);
+      this.applyPageCustomizationsFromWiki(prefs, tw);
 
       tw.saverHandler.savers.push({
         info: {
           name: config.name,
           priority: config.priority,
-          capabilities: config.capabilities
+          capabilities: ['save', 'autosave']
         },
         save: async (text: string, method: string, callback: (err?: string) => void) => {
           // Get preferences
-          const prefs = opts.preferences();
+          const currentPrefs = opts.preferences();
 
-          if (prefs.disableDriveSave) {
-            callback('Saving disabled');
-            return false;
-          }
-          if (method === 'autosave' && !prefs.autosave) {
+          if (!currentPrefs.autosave) {
             callback('Autosave disabled');
             return false;
           }
+
           try {
-            const result = await config.saveFunction(text, { autosave: method === 'autosave' });
+            const result = await config.saveFunction(text, { autosave: true });
 
             // Return false if save failed (handled conflict or error)
             // There will be a dialog for the user if there was an error
@@ -164,7 +239,7 @@ class TiddlyWikiService {
               }
               // Call optional success callback
               if (config.onSaveSuccess) {
-                config.onSaveSuccess(tw, prefs);
+                config.onSaveSuccess(tw, currentPrefs);
               }
             } catch (err) {
               console.warn('[td2/tw] failed to reset TW dirty status', err);

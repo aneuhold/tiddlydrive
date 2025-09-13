@@ -83,7 +83,6 @@ class GoogleDriveService {
     tiddlyWikiService.registerSaver(iframe, opts, {
       name: 'tiddly-drive-2',
       priority: 2000,
-      capabilities: ['save', 'autosave'],
       saveFunction: this.save,
       onSaveSuccess: (tw, prefs) => {
         // If any page customizations (like favicon) changed, reflect them
@@ -98,10 +97,18 @@ class GoogleDriveService {
    * @param html The full HTML content of the wiki
    * @param root0 Save options including autosave flag
    * @param root0.autosave Whether the save is an autosave
-   * @returns Promise resolving to true on success, false on handled conflict
+   * @returns Promise resolving to true on success, false to fall back to TiddlyWiki's built-in savers
    */
   save = async (html: string, { autosave = false }: SaveOptions = {}): Promise<boolean> => {
     if (!this.currentFileId) throw new Error('File not loaded');
+
+    // Check if we're online - if not, fall back to TiddlyWiki's built-in savers
+    if (!navigator.onLine) {
+      console.log('[td2/drive] Offline detected, falling back to built-in TiddlyWiki savers');
+      showToast('Offline - saved locally');
+      return false;
+    }
+
     // Queue latest save request and process with single-flight & debounce (for autosave).
     return new Promise<boolean>((resolve) => {
       this.pendingSave = { html, autosave };
@@ -131,8 +138,17 @@ class GoogleDriveService {
       try {
         ok = await this.uploadHtmlMedia(html);
       } catch (e) {
-        console.warn('[td2/drive] upload error', e);
-        ok = false;
+        // Check if this is a network error - if so, fall back to TiddlyWiki's built-in savers
+        if (googleDriveRepository.isNetworkError(e)) {
+          console.log(
+            '[td2/drive] Network error detected, falling back to built-in TiddlyWiki savers'
+          );
+          showToast('Network error - saved locally');
+          ok = false;
+        } else {
+          console.warn('[td2/drive] upload error', e);
+          ok = false;
+        }
       }
       resolvers.forEach((r: (ok: boolean) => void) => {
         r(ok);
@@ -161,6 +177,8 @@ class GoogleDriveService {
     }
 
     try {
+      await googleDriveRepository.uploadFileContent(this.currentFileId, html, token);
+
       // Update our local content hash tracker after successful upload
       const newHash = this.generateContentHash(html);
       this.currentContentHash = newHash;
@@ -229,7 +247,7 @@ class GoogleDriveService {
                 // Bypass conflict preflight on the next save
                 this.forceNextSave = true;
                 // Ask TiddlyWiki to perform a normal save; our saver will handle the force flag
-                await tiddlyWikiService.getLatestTWObject()?.saverHandler?.saveWiki();
+                await tiddlyWikiService.saveWiki();
               } catch (e) {
                 console.warn('[td2/drive] forced save failed', e);
               }

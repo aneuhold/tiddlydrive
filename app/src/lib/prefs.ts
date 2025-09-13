@@ -6,7 +6,6 @@ const PREFS_KEY = 'td2:prefs';
 export type Prefs = {
   autosave: boolean;
   enableHotkeySave: boolean;
-  disableDriveSave: boolean;
   useWikiFavicon: boolean;
   useWikiTitle: boolean;
 };
@@ -14,7 +13,6 @@ export type Prefs = {
 export const defaultPrefs: Prefs = {
   autosave: true,
   enableHotkeySave: true,
-  disableDriveSave: false,
   useWikiFavicon: true,
   useWikiTitle: true
 };
@@ -54,7 +52,6 @@ export const loadPrefs = (): Prefs => {
       prefs = {
         autosave: parsed.autosave ?? prefs.autosave,
         enableHotkeySave: parsed.enableHotkeySave ?? prefs.enableHotkeySave,
-        disableDriveSave: parsed.disableDriveSave ?? prefs.disableDriveSave,
         useWikiFavicon: parsed.useWikiFavicon ?? prefs.useWikiFavicon,
         useWikiTitle: parsed.useWikiTitle ?? prefs.useWikiTitle
       };
@@ -66,7 +63,6 @@ export const loadPrefs = (): Prefs => {
   // Legacy cookie fallback
   prefs.autosave = readCookie('enableautosave') !== 'false';
   prefs.enableHotkeySave = readCookie('enablehotkeysave') !== 'false';
-  prefs.disableDriveSave = readCookie('disablesave') === 'true';
   return prefs;
 };
 
@@ -88,5 +84,6 @@ export const prefsStore: Writable<Prefs> = writable(loadPrefs());
 
 prefsStore.subscribe((val) => {
   tiddlyWikiService.applyPageCustomizationsFromWiki(val);
+  tiddlyWikiService.updateSaverRegistration(val);
   savePrefs(val);
 });

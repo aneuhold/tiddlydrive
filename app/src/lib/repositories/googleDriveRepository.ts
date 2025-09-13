@@ -160,6 +160,38 @@ class GoogleDriveRepository {
 
     return (await response.json()) as DriveFileMeta;
   }
+
+  /**
+   * Checks if an error is likely a network-related issue.
+   *
+   * @param error The error to check
+   * @returns True if the error appears to be network-related
+   */
+  isNetworkError(error: unknown): boolean {
+    if (!error) return false;
+
+    const errorMessage = ((error as Error).message || '').toLowerCase();
+    const errorName = ((error as Error).name || '').toLowerCase();
+
+    // Common network error indicators
+    const networkErrorPatterns = [
+      'network error',
+      'fetch failed',
+      'failed to fetch',
+      'network request failed',
+      'connection refused',
+      'connection timeout',
+      'timeout',
+      'no internet',
+      'offline',
+      'unreachable',
+      'dns'
+    ];
+
+    return networkErrorPatterns.some(
+      (pattern) => errorMessage.includes(pattern) || errorName.includes(pattern)
+    );
+  }
 }
 
 const googleDriveRepository = new GoogleDriveRepository();

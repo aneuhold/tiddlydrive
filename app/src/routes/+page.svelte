@@ -3,7 +3,6 @@
   import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
   import { prefsStore } from '$lib/prefs';
   import googleDriveService from '$lib/services/googleDriveService';
-  import tiddlyWikiService from '$lib/services/tiddlyWikiService';
 
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
@@ -18,45 +17,6 @@
   let showSettings = $state(false);
   let hideFab = $state(false);
 
-  /**
-   * Register cmd/ctrl + S handler.
-   *
-   * @returns Cleanup function to unregister the handler
-   */
-  const registerHotkey = (): (() => void) => {
-    const handler = (e: KeyboardEvent): void => {
-      if (!$prefsStore.enableHotkeySave) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        manualSave();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => {
-      window.removeEventListener('keydown', handler);
-    };
-  };
-
-  /** Trigger a save via TiddlyWiki's saver (no direct HTML serialization). */
-  const manualSave = (): void => {
-    if ($prefsStore.disableDriveSave) {
-      showToast('Save disabled');
-      return;
-    }
-    try {
-      const tw = tiddlyWikiService.getTiddlyWikiFromWindow(iframeEl?.contentWindow ?? null);
-      const saveWiki = tw?.saverHandler?.saveWiki;
-      if (typeof saveWiki === 'function') {
-        saveWiki();
-      } else {
-        showToast('TiddlyWiki not ready');
-      }
-    } catch (e) {
-      console.error(e);
-      error = 'Save failed';
-    }
-  };
-
   /** Initiate interactive auth flow, or notify if already authenticated. */
   const authenticate = async (): Promise<void> => {
     if (hasValidToken()) {
@@ -67,7 +27,6 @@
   };
 
   onMount(() => {
-    let unregisterHotkey: (() => void) | null = null;
     (async () => {
       // prefs loaded via store initialization
       const hasState = !!googleDriveService.parseState();
@@ -90,16 +49,12 @@
         googleDriveService.registerWikiSaver(frame, {
           preferences: () => $prefsStore
         });
-        unregisterHotkey = registerHotkey();
         status = 'ready';
       } catch (e) {
         error = (e as Error).message;
         status = 'error';
       }
     })();
-    return () => {
-      if (unregisterHotkey) unregisterHotkey();
-    };
   });
 </script>
 

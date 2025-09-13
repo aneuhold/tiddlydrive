@@ -42,16 +42,6 @@
     </label>
 
     <label>
-      <input type="checkbox" bind:checked={$prefsStore.enableHotkeySave} />
-      Hotkey Save
-    </label>
-
-    <label>
-      <input type="checkbox" bind:checked={$prefsStore.disableDriveSave} />
-      Disable Drive Save
-    </label>
-
-    <label>
       <input
         type="checkbox"
         checked={!!props.hideFab}
