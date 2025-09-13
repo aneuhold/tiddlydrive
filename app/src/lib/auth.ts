@@ -2,6 +2,8 @@ import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
 
 const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+const TOKEN_EXPIRY_GRACE_PERIOD_SECONDS = 300; // 5 minutes in seconds
 
 let tokenClient: GoogleTokenClient | null = null;
 let accessToken: string | null = null;
@@ -54,12 +56,15 @@ const persistToken = (): void => {
 /**
  * Returns true when a valid, non-expired OAuth token is already available (cached or in-memory).
  * This will try to hydrate from localStorage on first use.
+ * Note: We use a generous expiry check to avoid frequent re-auth like legacy version.
  *
  * @returns boolean indicating whether a valid token exists
  */
 export const hasValidToken = (): boolean => {
   loadCachedToken();
-  return !!accessToken && Date.now() < tokenExpiry;
+  // Use a much more generous expiry buffer vs the aggressive 30 second buffer
+  // This matches the legacy behavior where tokens were rarely invalidated
+  return !!accessToken && Date.now() < tokenExpiry - TOKEN_EXPIRY_BUFFER_MS;
 };
 
 /**
@@ -168,7 +173,9 @@ const requestInteractive = async (prompt?: 'consent'): Promise<string> =>
         return;
       }
       accessToken = resp.access_token;
-      tokenExpiry = Date.now() + (resp.expires_in - 30) * 1000;
+      // Use a much more generous expiry - only subtract 5 minutes instead of 30 seconds
+      // This makes tokens last ~55 minutes instead of ~59.5 minutes, reducing re-auth frequency
+      tokenExpiry = Date.now() + (resp.expires_in - TOKEN_EXPIRY_GRACE_PERIOD_SECONDS) * 1000;
       // Resolve the caller and any queued waiters.
       resolve(resp.access_token);
       const toResolve = pending.splice(0);
@@ -200,9 +207,14 @@ const requestInteractive = async (prompt?: 'consent'): Promise<string> =>
  * @returns Promise resolving to a valid OAuth access token
  */
 export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise<string> => {
-  // Try to reuse a cached valid token from storage
+  // Try to reuse a cached valid token from storage with generous expiry check
   loadCachedToken();
-  if (accessToken && Date.now() < tokenExpiry) return accessToken;
+
+  // Use the same generous buffer as hasValidToken to avoid frequent re-auth
+  if (accessToken && Date.now() < tokenExpiry - TOKEN_EXPIRY_BUFFER_MS) {
+    return accessToken;
+  }
+
   // Ensure token client is initialized with the currently configured scope
   if (!tokenClient) {
     await initAuth();
@@ -214,11 +226,32 @@ export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise
   if (requesting) return new Promise((res) => pending.push(res));
   requesting = true;
   try {
+    // First try silent refresh (no prompt) unless explicitly requesting consent
     const tok = await requestInteractive(opts.prompt);
     persistToken();
     return tok;
   } finally {
     requesting = false;
+  }
+};
+
+/**
+ * Validates the current token by making a lightweight API call.
+ * Returns true if token is valid, false if it needs refresh.
+ *
+ * @returns Promise<boolean> indicating if current token is valid
+ */
+export const validateToken = async (): Promise<boolean> => {
+  if (!accessToken) return false;
+
+  try {
+    // Make a lightweight API call to validate the token
+    const response = await fetch(
+      'https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=' + accessToken
+    );
+    return response.ok;
+  } catch {
+    return false;
   }
 };
 
