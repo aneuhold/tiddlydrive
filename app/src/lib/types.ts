@@ -1,5 +1,3 @@
-import type { Prefs } from '$lib/prefs';
-
 /**
  * Minimal Google Identity Services token response shape used by this app.
  */
@@ -38,13 +36,6 @@ export type DriveFileMeta = {
    * returned as a string by the API.
    */
   version?: string;
-};
-
-/**
- * Options used when registering the TiddlyWiki saver integration.
- */
-export type SaverOptions = {
-  preferences: () => Prefs;
 };
 
 /**

@@ -1,11 +1,8 @@
 import { getAccessToken } from '$lib/auth.js';
 import googleDriveRepository from '$lib/repositories/googleDriveRepository';
-import {
-  applyPageCustomizationsFromWiki,
-  getTiddlyWikiFromWindow,
-  latestTWObject
-} from '$lib/tw.js';
-import type { DriveFileMeta, DriveOpenState, SaveOptions, SaverOptions } from '$lib/types';
+import type { SaverOptions } from '$lib/services/tiddlyWikiService';
+import tiddlyWikiService from '$lib/services/tiddlyWikiService';
+import type { DriveFileMeta, DriveOpenState, SaveOptions } from '$lib/types';
 import { showError, showToast } from '$lib/ui/UiHost.svelte';
 
 export interface LoadResult {
@@ -78,70 +75,24 @@ class GoogleDriveService {
   }
 
   /**
-   * Attempts to hook into TiddlyWiki's saver pipeline so we save only when TW is dirty.
+   * Registers this service's save functionality with TiddlyWiki's saver pipeline.
    *
    * @param iframe The iframe containing the wiki
    * @param opts Saver controls
    */
   registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions): void => {
     if (this.wikiSaverRegistered) return;
-    const attempt = (): void => {
-      const win = iframe.contentWindow;
-      const tw = getTiddlyWikiFromWindow(win);
-      if (!tw || !tw.saverHandler || !Array.isArray(tw.saverHandler.savers)) {
-        setTimeout(attempt, 600);
-        return;
+    tiddlyWikiService.registerSaver(iframe, opts, {
+      name: 'tiddly-drive-2',
+      priority: 2000,
+      capabilities: ['save', 'autosave'],
+      saveFunction: this.save,
+      onSaveSuccess: (tw, prefs) => {
+        // If any page customizations (like favicon) changed, reflect them
+        tiddlyWikiService.applyPageCustomizationsFromWiki(prefs, tw);
       }
-
-      // Apply page customizations from wiki once TW is available
-      applyPageCustomizationsFromWiki(opts.preferences(), tw);
-
-      tw.saverHandler.savers.push({
-        info: { name: 'tiddly-drive-2', priority: 2000, capabilities: ['save', 'autosave'] },
-        save: async (text: string, method: string, callback: (err?: string) => void) => {
-          // Get preferences
-          const prefs = opts.preferences();
-
-          if (prefs.disableDriveSave) {
-            callback('Saving disabled');
-            return false;
-          }
-          if (method === 'autosave' && !prefs.autosave) {
-            callback('Autosave disabled');
-            return false;
-          }
-          try {
-            const result = await this.save(text, { autosave: method === 'autosave' });
-
-            // Return false if save failed (handled conflict or error)
-            // There will be a dialog for the user if there was an error
-            if (!result) {
-              return false;
-            }
-
-            // Reset change counter so TW clears dirty indicator.
-            try {
-              const sh = tw.saverHandler;
-              if (sh) {
-                sh.numChanges = 0;
-                sh.updateDirtyStatus();
-              }
-              // If any page customizations (like favicon) changed, reflect them
-              applyPageCustomizationsFromWiki(prefs, tw);
-            } catch (err) {
-              console.warn('[td2/drive] failed to reset TW dirty status', err);
-            }
-            // Purposefully skip the callback here, so it doesn't show the built-in "saved" toast.
-            return true;
-          } catch (e) {
-            callback((e as Error).message);
-            return false;
-          }
-        }
-      });
-      this.wikiSaverRegistered = true;
-    };
-    attempt();
+    });
+    this.wikiSaverRegistered = true;
   };
 
   /**
@@ -271,7 +222,7 @@ class GoogleDriveService {
               // Bypass conflict preflight on the next save
               this.forceNextSave = true;
               // Ask TiddlyWiki to perform a normal save; our saver will handle the force flag
-              await latestTWObject?.saverHandler?.saveWiki();
+              await tiddlyWikiService.getLatestTWObject()?.saverHandler?.saveWiki();
             } catch (e) {
               console.warn('[td2/drive] forced save failed', e);
             }
@@ -287,4 +238,5 @@ class GoogleDriveService {
   };
 }
 
-export default new GoogleDriveService();
+const googleDriveService = new GoogleDriveService();
+export default googleDriveService;

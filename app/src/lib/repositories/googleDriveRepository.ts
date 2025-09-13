@@ -162,4 +162,5 @@ class GoogleDriveRepository {
   }
 }
 
-export default new GoogleDriveRepository();
+const googleDriveRepository = new GoogleDriveRepository();
+export default googleDriveRepository;

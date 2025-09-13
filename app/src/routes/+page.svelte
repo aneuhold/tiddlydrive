@@ -3,7 +3,7 @@
   import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
   import { prefsStore } from '$lib/prefs';
   import googleDriveService from '$lib/services/googleDriveService';
-  import { getTiddlyWikiFromWindow } from '$lib/tw';
+  import tiddlyWikiService from '$lib/services/tiddlyWikiService';
 
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
@@ -44,7 +44,7 @@
       return;
     }
     try {
-      const tw = getTiddlyWikiFromWindow(iframeEl?.contentWindow ?? null);
+      const tw = tiddlyWikiService.getTiddlyWikiFromWindow(iframeEl?.contentWindow ?? null);
       const saveWiki = tw?.saverHandler?.saveWiki;
       if (typeof saveWiki === 'function') {
         saveWiki();
@@ -101,8 +101,6 @@
       if (unregisterHotkey) unregisterHotkey();
     };
   });
-
-  // settings dialog open/close is controlled in the component
 </script>
 
 <svelte:head>

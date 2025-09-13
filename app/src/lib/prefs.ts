@@ -1,4 +1,4 @@
-import { applyPageCustomizationsFromWiki } from '$lib/tw';
+import tiddlyWikiService from '$lib/services/tiddlyWikiService';
 import { writable, type Writable } from 'svelte/store';
 
 const PREFS_KEY = 'td2:prefs';
@@ -87,6 +87,6 @@ const savePrefs = (prefs: Prefs): void => {
 export const prefsStore: Writable<Prefs> = writable(loadPrefs());
 
 prefsStore.subscribe((val) => {
-  applyPageCustomizationsFromWiki(val);
+  tiddlyWikiService.applyPageCustomizationsFromWiki(val);
   savePrefs(val);
 });
