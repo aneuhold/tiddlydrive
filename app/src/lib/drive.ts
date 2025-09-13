@@ -108,7 +108,7 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions)
     }
 
     // Apply page customizations from wiki once TW is available
-    applyPageCustomizationsFromWiki(tw, document, opts.preferences());
+    applyPageCustomizationsFromWiki(opts.preferences(), tw);
 
     tw.saverHandler.savers.push({
       info: { name: 'tiddly-drive-2', priority: 2000, capabilities: ['save', 'autosave'] },
@@ -134,7 +134,7 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions)
               sh.updateDirtyStatus();
             }
             // If any page customizations (like favicon) changed, reflect them
-            applyPageCustomizationsFromWiki(tw, document, prefs);
+            applyPageCustomizationsFromWiki(prefs, tw);
           } catch (err) {
             console.warn('[td2/drive] failed to reset TW dirty status', err);
           }

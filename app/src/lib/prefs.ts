@@ -1,3 +1,4 @@
+import { applyPageCustomizationsFromWiki } from '$lib/tw';
 import { writable, type Writable } from 'svelte/store';
 
 const PREFS_KEY = 'td2:prefs';
@@ -7,13 +8,15 @@ export type Prefs = {
   enableHotkeySave: boolean;
   disableDriveSave: boolean;
   useWikiFavicon: boolean;
+  useWikiTitle: boolean;
 };
 
 export const defaultPrefs: Prefs = {
   autosave: true,
   enableHotkeySave: true,
   disableDriveSave: false,
-  useWikiFavicon: true
+  useWikiFavicon: true,
+  useWikiTitle: true
 };
 
 /**
@@ -52,7 +55,8 @@ export const loadPrefs = (): Prefs => {
         autosave: parsed.autosave ?? prefs.autosave,
         enableHotkeySave: parsed.enableHotkeySave ?? prefs.enableHotkeySave,
         disableDriveSave: parsed.disableDriveSave ?? prefs.disableDriveSave,
-        useWikiFavicon: parsed.useWikiFavicon ?? prefs.useWikiFavicon
+        useWikiFavicon: parsed.useWikiFavicon ?? prefs.useWikiFavicon,
+        useWikiTitle: parsed.useWikiTitle ?? prefs.useWikiTitle
       };
       return prefs;
     }
@@ -83,6 +87,6 @@ const savePrefs = (prefs: Prefs): void => {
 export const prefsStore: Writable<Prefs> = writable(loadPrefs());
 
 prefsStore.subscribe((val) => {
-  console.log('prefsStore change', val);
+  applyPageCustomizationsFromWiki(val);
   savePrefs(val);
 });

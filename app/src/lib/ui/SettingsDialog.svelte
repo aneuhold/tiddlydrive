@@ -65,6 +65,11 @@
         <input type="checkbox" bind:checked={$prefsStore.useWikiFavicon} />
         Use favicon from `$:/favicon.ico` tiddler
       </label>
+
+      <label>
+        <input type="checkbox" bind:checked={$prefsStore.useWikiTitle} />
+        Use title from `$:/SiteTitle` and `$:/SiteSubtitle`
+      </label>
     </CollapsibleSection>
 
     <p class="help">
