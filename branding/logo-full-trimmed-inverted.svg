@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="597" height="380" viewBox="0 0 597 380" role="img"
+  aria-labelledby="title desc">
+  <title id="title">Tiddly Drive 2 Logo (Trimmed Inverted)</title>
+  <desc id="desc">Horizontal logo variant for dark backgrounds with reduced horizontal padding for 1.57:1 aspect ratio.</desc>
+  <defs>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#1D60D8" />
+    </linearGradient>
+  </defs>
+  <!-- Icon group: scaled version of 512x512 original (scale 0.4) -->
+  <g id="icon" transform="translate(20 50) scale(0.4)">
+    <rect x="48" y="48" width="416" height="416" rx="96" fill="url(#g2)" />
+    <path fill="#FFFFFF"
+      d="M188 136c-14.9 0-28 13.1-28 28v184c0 15.5 12.5 28 28 28h136c15.5 0 28-12.5 28-28V212l-76-76H188zm156 76h-48c-15.5 0-28-12.5-28-28v-48l76 76z" />
+    <rect x="228" y="250" width="104" height="28" rx="14" fill="#1D60D8" opacity="0.32" />
+    <rect x="228" y="300" width="104" height="28" rx="14" fill="#1D60D8" opacity="0.24" />
+  </g>
+  <!-- Wordmark aligned to icon center vertically -->
+  <g id="wordmark" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="90" font-weight="600"
+    fill="#F1F5F9" letter-spacing="0.3">
+    <text x="240" y="140">Tiddly</text>
+    <text x="240" y="230">
+      <tspan font-weight="500">Drive</tspan>
+      <tspan font-weight="600">2</tspan>
+    </text>
+  </g>
+  <!-- Transparent bounds for clipping prevention -->
+  <rect x="0" y="0" width="597" height="380" fill="none" />
+</svg>
