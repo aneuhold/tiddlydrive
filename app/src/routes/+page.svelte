@@ -1,8 +1,8 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
   import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
-  import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
   import { prefsStore } from '$lib/prefs';
+  import googleDriveService from '$lib/services/googleDriveService';
   import { getTiddlyWikiFromWindow } from '$lib/tw';
 
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
@@ -70,7 +70,7 @@
     let unregisterHotkey: (() => void) | null = null;
     (async () => {
       // prefs loaded via store initialization
-      const hasState = !!parseState();
+      const hasState = !!googleDriveService.parseState();
       if (!hasState) {
         status = 'no-state';
         return;
@@ -86,8 +86,8 @@
           return;
         }
         const frame = iframeEl;
-        await loadFile(frame);
-        registerWikiSaver(frame, {
+        await googleDriveService.loadFile(frame);
+        googleDriveService.registerWikiSaver(frame, {
           preferences: () => $prefsStore
         });
         unregisterHotkey = registerHotkey();
