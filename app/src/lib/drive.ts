@@ -1,7 +1,7 @@
+import { showError, showToast } from '$lib/ui/UiHost.svelte';
 import { getAccessToken } from './auth.js';
-import { applyPageCustomizationsFromWiki, getTiddlyWikiFromWindow } from './tw.js';
+import { applyPageCustomizationsFromWiki, getTiddlyWikiFromWindow, latestTWObject } from './tw.js';
 import type { DriveFileMeta, DriveOpenState, SaveOptions, SaverOptions } from './types.js';
-import { showError, showToast } from './ui.js';
 
 let currentFileId: string | null = null;
 let currentFileName = 'wiki.html';
@@ -10,6 +10,11 @@ let wikiSaverRegistered = false;
 let saving = false;
 let pendingSave: { html: string; autosave: boolean } | null = null;
 const pendingResolvers: Array<(ok: boolean) => void> = [];
+
+/**
+ * When true, the next save will bypass the version preflight (used by "Save Anyway")
+ */
+let forceNextSave = false;
 
 export interface LoadResult {
   meta: DriveFileMeta;
@@ -220,29 +225,16 @@ const processSaveQueue = async (): Promise<void> => {
 const uploadHtmlMedia = async (html: string): Promise<boolean> => {
   if (!currentFileId) throw new Error('File not loaded');
   let token = await getAccessToken();
-  // Preflight: fetch current version and detect conflicts before upload.
-  try {
-    const verResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${currentFileId}?fields=version&supportsAllDrives=true&includeItemsFromAllDrives=true`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (verResp.ok) {
-      const verMeta = (await verResp.json()) as DriveFileMeta;
-      const serverVersion = verMeta.version ? Number.parseInt(verMeta.version, 10) : null;
-      if (
-        currentVersion !== null &&
-        serverVersion !== null &&
-        !Number.isNaN(serverVersion) &&
-        serverVersion !== currentVersion
-      ) {
-        showError('Conflict Detected', 'The file changed on Drive. Reload before saving.');
-        return false;
-      }
-    }
-  } catch (err) {
-    // If preflight fails (network/perm), continue and let upload path handle errors.
-    console.warn('[td2/drive] version preflight failed', err);
+
+  // Respect a global force-save request (e.g., from "Save Anyway") and reset it
+  const forcedSave = forceNextSave;
+  forceNextSave = false;
+
+  if (!forcedSave) {
+    const hasConflicts = await hasFileConflicts(html, token);
+    if (hasConflicts) return false;
   }
+
   const doUpload = async (): Promise<Response> =>
     fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${currentFileId}?uploadType=media&supportsAllDrives=true&fields=id,modifiedTime,version`,
@@ -290,4 +282,49 @@ const uploadHtmlMedia = async (html: string): Promise<boolean> => {
   currentVersion = respJson.version ? Number.parseInt(respJson.version, 10) : currentVersion;
   showToast('Saved');
   return true;
+};
+
+/**
+ * Detects if the file has been modified on Drive since we loaded or last saved it.
+ *
+ * @param html The HTML content we plan to upload (for forced save on conflict)
+ * @param token The current OAuth token
+ * @returns Promise resolving to true if a conflict was detected and handled (save should abort), false if no conflict
+ */
+const hasFileConflicts = async (html: string, token: string) => {
+  try {
+    const verResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${currentFileId}?fields=version&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (verResp.ok) {
+      const verMeta = (await verResp.json()) as DriveFileMeta;
+      const serverVersion = verMeta.version ? Number.parseInt(verMeta.version, 10) : null;
+      if (
+        currentVersion !== null &&
+        serverVersion !== null &&
+        !Number.isNaN(serverVersion) &&
+        serverVersion !== currentVersion
+      ) {
+        showError('Conflict Detected', 'The file changed on Google Drive. Reload before saving.', {
+          text: 'Save Anyway',
+          fn: async () => {
+            try {
+              // Bypass conflict preflight on the next save
+              forceNextSave = true;
+              // Ask TiddlyWiki to perform a normal save; our saver will handle the force flag
+              await latestTWObject?.saverHandler?.saveWiki();
+            } catch (e) {
+              console.warn('[td2/drive] forced save failed', e);
+            }
+          }
+        });
+        return true;
+      }
+    }
+  } catch (err) {
+    // If preflight fails (network/perm), continue and let upload path handle errors.
+    console.warn('[td2/drive] version preflight failed', err);
+  }
+  return false;
 };

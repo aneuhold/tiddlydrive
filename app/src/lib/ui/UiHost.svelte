@@ -1,6 +1,32 @@
-<script lang="ts">
+<script lang="ts" context="module">
   import { fade, fly } from 'svelte/transition';
-  import { clearUiError, toasts, uiError } from './store';
+  import { clearUiError, pushToast, setUiError, toasts, uiError } from './store';
+  /**
+   * Shows a toast message using the app-wide Svelte toast host.
+   *
+   * @param message The text to show
+   * @param timeout Milliseconds before the toast auto-dismisses
+   */
+  export const showToast = (message: string, timeout = 2000): void => {
+    pushToast(message, 'info', timeout);
+  };
+
+  /**
+   * Displays a simple blocking alert with a title and message body.
+   *
+   * @param title Title of the error
+   * @param body Message body
+   * @param action Optional action containing a button label and callback
+   * @param action.text The label to render on the action button
+   * @param action.fn The callback to execute when the action button is clicked
+   */
+  export const showError = (
+    title: string,
+    body: string,
+    action?: { text: string; fn: () => void | Promise<void> }
+  ): void => {
+    setUiError(title, body, action);
+  };
 </script>
 
 <svelte:window />
@@ -34,6 +60,20 @@
         >
           OK
         </button>
+        {#if $uiError.action}
+          <button
+            class="secondary"
+            on:click={async () => {
+              const action = $uiError.action;
+              clearUiError();
+              if (action) {
+                await action.fn();
+              }
+            }}
+          >
+            {$uiError.action.text}
+          </button>
+        {/if}
       </div>
     </div>
   </div>
@@ -115,5 +155,10 @@
     font-weight: 600;
     font-size: 0.8rem;
     letter-spacing: 0.5px;
+  }
+  .td2-modal-card button.secondary {
+    background: #e0e0e0;
+    color: #111;
+    margin-left: 0.5rem;
   }
 </style>

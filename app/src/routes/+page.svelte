@@ -4,10 +4,10 @@
   import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
   import { prefsStore } from '$lib/prefs';
   import { getTiddlyWikiFromWindow } from '$lib/tw';
-  import { showToast } from '$lib/ui';
+
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
-  import UiHost from '$lib/ui/UiHost.svelte';
+  import UiHost, { showToast } from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
 
   type Status = 'initializing' | 'no-state' | 'loading' | 'ready' | 'error';

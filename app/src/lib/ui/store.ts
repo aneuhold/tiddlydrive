@@ -12,6 +12,10 @@ export type Toast = {
 export type UiError = {
   title: string;
   body: string;
+  action?: {
+    text: string;
+    fn: () => void | Promise<void>;
+  };
 } | null;
 
 /** Store holding active toasts. */
@@ -44,8 +48,21 @@ export const pushToast = (message: string, kind: ToastKind = 'info', timeout = 2
  * @param title Title text
  * @param body Body text
  */
-export const setUiError = (title: string, body: string): void => {
-  uiError.set({ title, body });
+/**
+ * Sets a UI error to be displayed by the host component, with an optional action button.
+ *
+ * @param title Title text
+ * @param body Body text
+ * @param action Optional action with button text and callback
+ * @param action.text The label for the action button
+ * @param action.fn The callback to run when the action button is clicked
+ */
+export const setUiError = (
+  title: string,
+  body: string,
+  action?: { text: string; fn: () => void | Promise<void> }
+): void => {
+  uiError.set({ title, body, action });
 };
 
 /**
