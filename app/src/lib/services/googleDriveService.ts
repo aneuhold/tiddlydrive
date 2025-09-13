@@ -15,8 +15,7 @@ export interface LoadResult {
 class GoogleDriveService {
   private currentFileId: string | null = null;
   private currentFileName = 'wiki.html';
-  private currentVersion: number | null = null;
-  private wikiSaverRegistered = false;
+  private currentContentHash: string | null = null;
   private saving = false;
   private pendingSave: { html: string; autosave: boolean } | null = null;
   private pendingResolvers: Array<(ok: boolean) => void> = [];
@@ -61,13 +60,13 @@ class GoogleDriveService {
 
     // Get file metadata
     const meta = await googleDriveRepository.getFileMetadata(this.currentFileId, token);
-
-    // Track the Drive file version for simple conflict detection (string -> integer)
-    this.currentVersion = meta.version ? Number.parseInt(meta.version) : null;
     this.currentFileName = meta.name || this.currentFileName;
 
     // Download file content
     const text = await googleDriveRepository.downloadFileContent(this.currentFileId, token);
+
+    // Track the content hash for conflict detection
+    this.currentContentHash = this.generateContentHash(text);
 
     iframe.srcdoc = text;
     showToast('File loaded');
@@ -81,7 +80,6 @@ class GoogleDriveService {
    * @param opts Saver controls
    */
   registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions): void => {
-    if (this.wikiSaverRegistered) return;
     tiddlyWikiService.registerSaver(iframe, opts, {
       name: 'tiddly-drive-2',
       priority: 2000,
@@ -92,7 +90,6 @@ class GoogleDriveService {
         tiddlyWikiService.applyPageCustomizationsFromWiki(prefs, tw);
       }
     });
-    this.wikiSaverRegistered = true;
   };
 
   /**
@@ -164,18 +161,9 @@ class GoogleDriveService {
     }
 
     try {
-      const respJson = await googleDriveRepository.uploadFileContent(
-        this.currentFileId,
-        html,
-        token
-      );
-
-      console.log('[td2/drive] saved', respJson);
-      // Update our local version tracker with the value returned by Drive
-      this.currentVersion = respJson.version
-        ? Number.parseInt(respJson.version)
-        : this.currentVersion;
-      console.log(this.currentVersion);
+      // Update our local content hash tracker after successful upload
+      const newHash = this.generateContentHash(html);
+      this.currentContentHash = newHash;
       showToast('Saved');
       return true;
     } catch (error) {
@@ -197,45 +185,82 @@ class GoogleDriveService {
   /**
    * Detects if the file has been modified on Drive since we loaded or last saved it.
    *
+   * Content hash conflict logic:
+   * - When we load a file, we store the hash of its content
+   * - When we save, we update our stored hash to match the uploaded content
+   * - Before saving, we download the current file content and compare its hash with our stored hash
+   * - If they differ, someone else modified the file and we have a conflict
+   *
    * @param token The current OAuth token
    * @returns Promise resolving to true if a conflict was detected and handled (save should abort), false if no conflict
    */
   hasFileConflicts = async (token: string) => {
-    if (!this.currentFileId) return false;
+    if (!this.currentFileId || !this.currentContentHash) return false;
 
     try {
-      const verMeta = await googleDriveRepository.getFileVersion(this.currentFileId, token);
-      const serverVersion = verMeta.version ? Number.parseInt(verMeta.version, 10) : null;
-      if (
-        this.currentVersion !== null &&
-        serverVersion !== null &&
-        !Number.isNaN(serverVersion) &&
-        serverVersion !== this.currentVersion
-      ) {
+      // Download current file content and metadata to check for modifications
+      const [currentContent, serverMeta] = await Promise.all([
+        googleDriveRepository.downloadFileContent(this.currentFileId, token),
+        googleDriveRepository.getFileMetadata(this.currentFileId, token)
+      ]);
+      const serverContentHash = this.generateContentHash(currentContent);
+
+      // Check for content conflicts:
+      // - If server content hash differs from our stored hash, someone else modified the file
+      if (serverContentHash !== this.currentContentHash) {
         console.warn(
-          `[td2/drive] version conflict detected: local=${this.currentVersion} server=${serverVersion}`
+          `[td2/drive] content conflict detected: local=${this.currentContentHash} server=${serverContentHash}`
         );
-        showError('Conflict Detected', 'The file changed on Google Drive. Reload before saving.', {
-          text: 'Save Anyway',
-          fn: async () => {
-            try {
-              // Bypass conflict preflight on the next save
-              this.forceNextSave = true;
-              // Ask TiddlyWiki to perform a normal save; our saver will handle the force flag
-              await tiddlyWikiService.getLatestTWObject()?.saverHandler?.saveWiki();
-            } catch (e) {
-              console.warn('[td2/drive] forced save failed', e);
+
+        // Format the last modified time for display
+        let lastModifiedText = '';
+        if (serverMeta.modifiedTime) {
+          const modifiedDate = new Date(serverMeta.modifiedTime);
+          lastModifiedText = `\nLast modified: ${modifiedDate.toLocaleString()}`;
+        }
+
+        showError(
+          'Conflict Detected',
+          `The file changed on Google Drive. Reload before saving.${lastModifiedText}`,
+          {
+            text: 'Save Anyway',
+            fn: async () => {
+              try {
+                // Bypass conflict preflight on the next save
+                this.forceNextSave = true;
+                // Ask TiddlyWiki to perform a normal save; our saver will handle the force flag
+                await tiddlyWikiService.getLatestTWObject()?.saverHandler?.saveWiki();
+              } catch (e) {
+                console.warn('[td2/drive] forced save failed', e);
+              }
             }
           }
-        });
+        );
         return true;
       }
     } catch (err) {
       // If preflight fails (network/perm), continue and let upload path handle errors.
-      console.warn('[td2/drive] version preflight failed', err);
+      console.warn('[td2/drive] content preflight failed', err);
     }
     return false;
   };
+
+  /**
+   * Generate a simple hash of content for conflict detection (legacy method)
+   *
+   * @param content The content to hash
+   * @returns A hash string representation
+   */
+  private generateContentHash(content: string): string {
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+      const char = content.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    const result = hash.toString(36);
+    return result;
+  }
 }
 
 const googleDriveService = new GoogleDriveService();

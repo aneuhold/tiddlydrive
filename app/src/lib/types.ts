@@ -24,7 +24,9 @@ export type DriveOpenState = {
 };
 
 /**
- * Minimal subset of Drive file metadata used by the app.
+ * Minimal subset of Drive file metadata used by the app. See the
+ * [Google Drive v3 API docs](https://developers.google.com/workspace/drive/api/reference/rest/v3/files#File)
+ * for the full shape.
  */
 export type DriveFileMeta = {
   id: string;

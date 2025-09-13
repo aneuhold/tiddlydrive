@@ -1,15 +1,17 @@
 import type { Prefs } from '$lib/prefs';
 
 /**
- * TiddlyWiki saver entry minimal shape used by the app.
+ * Minimal TiddlyWiki interface exposed on `window.$tw` that we rely on.
  */
-type TWSaver = {
-  info: { name: string; priority: number; capabilities: string[] };
-  save: (text: string, method: string, callback: (err?: string) => void) => Promise<boolean>;
+export type TiddlyWiki = {
+  saverHandler?: TWSaverHandler;
+  wiki: {
+    getTiddler: (title: string) => Tiddler | undefined;
+  };
 };
 
 /**
- * TiddlyWiki saver handler shape used by the app.
+ * TiddlyWiki saver handler shape used by the app. This is the object at `window.$tw.saverHandler`.
  */
 type TWSaverHandler = {
   savers: TWSaver[];
@@ -19,13 +21,11 @@ type TWSaverHandler = {
 };
 
 /**
- * Minimal TiddlyWiki interface exposed on window.$tw that we rely on.
+ * TiddlyWiki saver entry minimal shape used by the app.
  */
-export type TiddlyWiki = {
-  saverHandler?: TWSaverHandler;
-  wiki: {
-    getTiddler: (title: string) => Tiddler | undefined;
-  };
+type TWSaver = {
+  info: { name: string; priority: number; capabilities: string[] };
+  save: (text: string, method: string, callback: (err?: string) => void) => Promise<boolean>;
 };
 
 type Tiddler = {
@@ -75,7 +75,6 @@ export type SaverRegistrationConfig = {
 class TiddlyWikiService {
   private latestTWObject: TiddlyWiki | undefined = undefined;
   private originalDocumentTitle: string | undefined;
-  private registeredSavers = new Set<string>();
 
   /**
    * Returns the TiddlyWiki ($tw) object from a window, if available.
@@ -110,13 +109,19 @@ class TiddlyWikiService {
     opts: SaverOptions,
     config: SaverRegistrationConfig
   ): void => {
-    if (this.registeredSavers.has(config.name)) return;
-
+    // Recursive method if needed to wait for TW to be available
     const attempt = (): void => {
       const win = iframe.contentWindow;
       const tw = this.getTiddlyWikiFromWindow(win);
+
+      // Wait for TW and saverHandler to be available
       if (!tw || !tw.saverHandler || !Array.isArray(tw.saverHandler.savers)) {
         setTimeout(attempt, 600);
+        return;
+      }
+
+      // Return if already registered
+      if (tw.saverHandler.savers.find((saver) => saver.info.name === config.name)) {
         return;
       }
 
@@ -172,7 +177,6 @@ class TiddlyWikiService {
           }
         }
       });
-      this.registeredSavers.add(config.name);
     };
     attempt();
   };
