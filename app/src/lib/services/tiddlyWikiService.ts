@@ -77,6 +77,8 @@ class TiddlyWikiService {
   private currentSaverConfig: SaverRegistrationConfig | undefined = undefined;
   private currentIframe: HTMLIFrameElement | undefined = undefined;
   private currentSaverOptions: SaverOptions | undefined = undefined;
+  private isOnline: boolean = navigator.onLine;
+  private onlineStatusListenersAdded: boolean = false;
 
   /**
    * Returns the TiddlyWiki ($tw) object from a window, if available.
@@ -145,23 +147,14 @@ class TiddlyWikiService {
   updateSaverRegistration = (prefs: Prefs): void => {
     if (!this.currentIframe || !this.currentSaverOptions || !this.currentSaverConfig) return;
 
-    const tw = this.latestTWObject;
-    if (!tw || !tw.saverHandler) return;
+    const isRegistered = this.isSaverRegistered();
 
-    const isRegistered = tw.saverHandler.savers.some(
-      (saver) => saver.info.name === this.currentSaverConfig?.name
-    );
-
-    // Determine if saver should be active (only based on autosave preference)
-    const shouldBeActive = prefs.autosave;
+    // Saver should be active if autosave is enabled AND we're online
+    const shouldBeActive = prefs.autosave && this.isOnline;
 
     if (shouldBeActive && !isRegistered) {
       // Register the saver
-      this.performSaverRegistration(
-        this.currentIframe,
-        this.currentSaverOptions,
-        this.currentSaverConfig
-      );
+      this.registerSaverIfNeeded();
     } else if (!shouldBeActive && isRegistered) {
       // Unregister the saver
       this.unregisterSaver();
@@ -196,15 +189,19 @@ class TiddlyWikiService {
         return;
       }
 
-      // Check if this saver should be active based on current preferences
+      // Apply page customizations from wiki once TW is available
       const prefs = opts.preferences();
-      if (!prefs.autosave) {
-        console.log(`[td2/tw] Skipping registration of ${config.name} - autosave disabled`);
+      this.applyPageCustomizationsFromWiki(prefs, tw);
+
+      // Always set up online status listeners for automatic saver management
+      this.setupOnlineStatusListeners();
+
+      // Check if this saver should be active based on current preferences and online status
+      if (!prefs.autosave || !this.isOnline) {
+        const reason = !prefs.autosave ? 'autosave disabled' : 'offline';
+        console.log(`[td2/tw] Skipping registration of ${config.name} - ${reason}`);
         return;
       }
-
-      // Apply page customizations from wiki once TW is available
-      this.applyPageCustomizationsFromWiki(prefs, tw);
 
       tw.saverHandler.savers.push({
         info: {
@@ -380,6 +377,79 @@ class TiddlyWikiService {
       });
     } catch (err) {
       console.warn('[td2/tw] removeWikiFaviconOverride failed', err);
+    }
+  };
+
+  /**
+   * Sets up online/offline event listeners to automatically manage saver registration.
+   * Always sets up listeners when a saver is first registered.
+   */
+  private setupOnlineStatusListeners = (): void => {
+    if (this.onlineStatusListenersAdded) return;
+
+    const handleOnlineStatusChange = (): void => {
+      const wasOnline = this.isOnline;
+      this.isOnline = navigator.onLine;
+
+      // Only process if status actually changed
+      if (wasOnline === this.isOnline) return;
+
+      if (this.isOnline) {
+        // Came back online - register saver if autosave is enabled
+        if (this.currentSaverOptions) {
+          const prefs = this.currentSaverOptions.preferences();
+          if (prefs.autosave) {
+            this.registerSaverIfNeeded();
+          }
+        }
+        return;
+      }
+      // Went offline - always unregister saver
+      if (this.isSaverRegistered()) {
+        this.unregisterSaver();
+
+        // Show toast message only if autosave was enabled
+        if (this.currentSaverOptions) {
+          const prefs = this.currentSaverOptions.preferences();
+          if (prefs.autosave) {
+            console.log('[td2/tw] Went offline - saver unregistered, will save locally');
+          }
+        }
+      }
+    };
+
+    window.addEventListener('online', handleOnlineStatusChange);
+    window.addEventListener('offline', handleOnlineStatusChange);
+    this.onlineStatusListenersAdded = true;
+  };
+
+  /**
+   * Checks if the TiddlyDrive saver is currently registered.
+   *
+   * @returns True if the saver is registered, false otherwise
+   */
+  private isSaverRegistered = (): boolean => {
+    const tw = this.latestTWObject;
+    if (!tw || !tw.saverHandler) return false;
+
+    return tw.saverHandler.savers.some(
+      (saver) => saver.info.name === this.currentSaverConfig?.name
+    );
+  };
+
+  /**
+   * Registers the saver if not already registered and conditions are met.
+   */
+  private registerSaverIfNeeded = (): void => {
+    if (!this.currentIframe || !this.currentSaverOptions || !this.currentSaverConfig) return;
+
+    if (!this.isSaverRegistered()) {
+      this.performSaverRegistration(
+        this.currentIframe,
+        this.currentSaverOptions,
+        this.currentSaverConfig
+      );
+      console.log('[td2/tw] Saver registered (came back online)');
     }
   };
 }
