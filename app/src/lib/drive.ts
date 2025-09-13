@@ -5,7 +5,7 @@ import { showError, showToast } from './ui.js';
 
 let currentFileId: string | null = null;
 let currentFileName = 'wiki.html';
-let etag: string | null = null;
+let currentVersion: number | null = null;
 let wikiSaverRegistered = false;
 let saving = false;
 let pendingSave: { html: string; autosave: boolean } | null = null;
@@ -70,8 +70,9 @@ export const loadFile = async (iframe: HTMLIFrameElement): Promise<LoadResult> =
     }
     throw new Error('Metadata fetch failed: ' + metaResp.status.toString() + ' ' + body);
   }
-  etag = metaResp.headers.get('etag');
   const meta = (await metaResp.json()) as DriveFileMeta;
+  // Track the Drive file version for simple conflict detection (string -> integer)
+  currentVersion = meta.version ? Number.parseInt(meta.version) : null;
   currentFileName = meta.name || currentFileName;
   const downloadUrl = `https://www.googleapis.com/drive/v3/files/${currentFileId}?alt=media&supportsAllDrives=true`;
   const fileResp = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${token}` } });
@@ -125,7 +126,14 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions)
           return false;
         }
         try {
-          await save(text, { autosave: method === 'autosave' });
+          const result = await save(text, { autosave: method === 'autosave' });
+
+          // Return false if save failed (handled conflict or error)
+          // There will be a dialog for the user if there was an error
+          if (!result) {
+            return false;
+          }
+
           // Reset change counter so TW clears dirty indicator.
           try {
             const sh = tw.saverHandler;
@@ -204,7 +212,7 @@ const processSaveQueue = async (): Promise<void> => {
 };
 
 /**
- * Uploads html using media upload (simpler and robust) with If-Match handling and permissions retry.
+ * Uploads html using media upload (simpler and robust) with preflight version check and permissions retry.
  *
  * @param html The full HTML content to upload
  * @returns Promise resolving to true on success, false when a handled conflict occurred
@@ -212,6 +220,29 @@ const processSaveQueue = async (): Promise<void> => {
 const uploadHtmlMedia = async (html: string): Promise<boolean> => {
   if (!currentFileId) throw new Error('File not loaded');
   let token = await getAccessToken();
+  // Preflight: fetch current version and detect conflicts before upload.
+  try {
+    const verResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${currentFileId}?fields=version&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (verResp.ok) {
+      const verMeta = (await verResp.json()) as DriveFileMeta;
+      const serverVersion = verMeta.version ? Number.parseInt(verMeta.version, 10) : null;
+      if (
+        currentVersion !== null &&
+        serverVersion !== null &&
+        !Number.isNaN(serverVersion) &&
+        serverVersion !== currentVersion
+      ) {
+        showError('Conflict Detected', 'The file changed on Drive. Reload before saving.');
+        return false;
+      }
+    }
+  } catch (err) {
+    // If preflight fails (network/perm), continue and let upload path handle errors.
+    console.warn('[td2/drive] version preflight failed', err);
+  }
   const doUpload = async (): Promise<Response> =>
     fetch(
       `https://www.googleapis.com/upload/drive/v3/files/${currentFileId}?uploadType=media&supportsAllDrives=true&fields=id,modifiedTime,version`,
@@ -219,8 +250,8 @@ const uploadHtmlMedia = async (html: string): Promise<boolean> => {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
-          'Content-Type': 'text/html; charset=UTF-8',
-          ...(etag ? { 'If-Match': etag } : {})
+          'Content-Type': 'text/html; charset=UTF-8'
+          // No ETag precondition, because Google doesn't provide that. We use version instead.
         },
         body: html
       }
@@ -234,10 +265,6 @@ const uploadHtmlMedia = async (html: string): Promise<boolean> => {
     } catch (_) {
       // ignore; fall through
     }
-  }
-  if (resp.status === 412 || resp.status === 409) {
-    showError('Conflict Detected', 'The file changed on Drive. Reload before saving.');
-    return false;
   }
   if (!resp.ok) {
     let detail = '';
@@ -257,7 +284,10 @@ const uploadHtmlMedia = async (html: string): Promise<boolean> => {
     }
     throw new Error('Save failed ' + resp.status.toString() + ' ' + detail);
   }
-  etag = resp.headers.get('etag') || etag;
+  const respJson = (await resp.json()) as DriveFileMeta;
+  console.log('[td2/drive] saved', respJson);
+  // Update our local version tracker with the value returned by Drive
+  currentVersion = respJson.version ? Number.parseInt(respJson.version, 10) : currentVersion;
   showToast('Saved');
   return true;
 };

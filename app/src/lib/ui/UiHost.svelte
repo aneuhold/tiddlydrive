@@ -10,9 +10,6 @@
     class="td2-modal"
     role="button"
     tabindex="0"
-    on:click={() => {
-      clearUiError();
-    }}
     on:keydown={(e) => {
       if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
         clearUiError();

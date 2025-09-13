@@ -32,7 +32,7 @@ This project is a modernized Tiddly Drive app built with Svelte 5 and Vite. It i
 
 - Open the app via the dev URL above with a valid Drive file id you can edit.
 - When the wiki loads, TiddlyWiki manages when to save. The app hooks into TW’s saver to upload to Drive.
-- The implementation uses media uploads (Drive v3) plus ETag (If-Match) for conflict safety, and coalesces rapid autosaves to prevent interleaving.
+- The implementation uses media uploads (Drive v3) and compares the Drive file `version` to detect conflicts; rapid autosaves are coalesced to prevent interleaving.
 
 ## Temporarily widening Google Drive OAuth scope
 
