@@ -48,16 +48,16 @@ class TiddlyWikiService {
     opts: SaverOptions,
     config: SaverRegistrationConfig
   ): void => {
-    // Seed TW reference once iframe has a contentWindow
-    const seedTW = (): void => {
+    // Wait for TW reference once iframe has a contentWindow
+    const waitForTW = (): void => {
       const win = iframe.contentWindow;
       if (win) {
         const tw = this.getTiddlyWikiFromWindow(win);
-        if (tw) return; // latestTW set inside
+        if (tw) return; // latestTW has been set
       }
-      setTimeout(seedTW, 200);
+      setTimeout(waitForTW, 200);
     };
-    seedTW();
+    waitForTW();
 
     saverManager.register(opts, config, (prefs: Prefs, tw?: TiddlyWiki) => {
       this.applyPageCustomizationsFromWiki(prefs, tw);
