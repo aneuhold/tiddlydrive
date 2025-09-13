@@ -187,6 +187,7 @@ class GoogleDriveRepository {
 
   /**
    * Retries a fetch request with a fresh token when encountering auth errors (401/403).
+   * Uses silent token refresh to avoid prompting the user unnecessarily.
    *
    * @param url The URL to retry
    * @param fetchOptions The original fetch options (method, headers, body, etc.)
@@ -198,7 +199,8 @@ class GoogleDriveRepository {
     fetchOptions: RequestInit,
     operation: string
   ): Promise<Response> {
-    const newToken = await getAccessToken({ prompt: 'consent' });
+    // First try silent refresh (no prompt) - this should handle most token expirations
+    const newToken = await getAccessToken();
     const retryOptions = {
       ...fetchOptions,
       headers: {

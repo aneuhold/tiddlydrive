@@ -68,7 +68,7 @@
     </p>
 
     <div class="actions">
-      <button onclick={() => props.onAuthenticate?.()}>Authenticate</button>
+      <button onclick={() => props.onAuthenticate?.()}>Re-authenticate</button>
       <button class="secondary" onclick={() => props.onClose?.()}>Close</button>
     </div>
   </div>

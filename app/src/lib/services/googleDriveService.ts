@@ -56,6 +56,7 @@ class GoogleDriveService {
     if (!state || !Array.isArray(state.ids) || state.ids.length !== 1)
       throw new Error('Missing or multi file state');
     this.currentFileId = state.ids[0];
+
     const token = await getAccessToken();
 
     // Get file metadata

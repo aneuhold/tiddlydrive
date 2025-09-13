@@ -1,12 +1,12 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
+  import { getAccessToken, initAuth } from '$lib/auth';
   import { prefsStore } from '$lib/prefs';
   import googleDriveService from '$lib/services/googleDriveService';
 
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
-  import UiHost, { showToast } from '$lib/ui/UiHost.svelte';
+  import UiHost, { showError, showToast } from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
 
   type Status = 'initializing' | 'no-state' | 'loading' | 'ready' | 'error';
@@ -17,13 +17,16 @@
   let showSettings = $state(false);
   let hideFab = $state(false);
 
-  /** Initiate interactive auth flow, or notify if already authenticated. */
-  const authenticate = async (): Promise<void> => {
-    if (hasValidToken()) {
-      showToast('Already authenticated');
-      return;
+  /** Force re-authentication with consent prompt, clearing any cached tokens. */
+  const forceAuthenticate = async (): Promise<void> => {
+    try {
+      // Force a fresh authentication with consent prompt
+      await getAccessToken({ prompt: 'consent' });
+      showToast('Re-authenticated successfully');
+    } catch (error) {
+      console.error('Force authentication failed:', error);
+      showError('Authentication failed', error instanceof Error ? error.message : String(error));
     }
-    await getAccessToken();
   };
 
   onMount(() => {
@@ -90,7 +93,7 @@
       <SettingsDialog
         open={showSettings}
         {hideFab}
-        onAuthenticate={authenticate}
+        onAuthenticate={forceAuthenticate}
         onClose={() => (showSettings = false)}
         onHideFabChange={(value) => {
           hideFab = value;
