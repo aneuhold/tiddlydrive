@@ -153,10 +153,10 @@ export const initAuth = async (): Promise<void> => {
  * Requests an OAuth token interactively via GIS, optionally forcing the consent prompt.
  * Also updates the cached token/expiry and resolves any pending concurrent requests.
  *
- * @param prompt Either 'consent' to force consent screen or '' for normal flow
+ * @param prompt Either 'consent' to force consent screen; omit to allow silent flow
  * @returns Promise resolving to the OAuth access token string
  */
-const requestInteractive = async (prompt: '' | 'consent' = ''): Promise<string> =>
+const requestInteractive = async (prompt?: 'consent'): Promise<string> =>
   new Promise((resolve, reject) => {
     if (!tokenClient) {
       reject(new Error('Token client not init'));
@@ -179,7 +179,13 @@ const requestInteractive = async (prompt: '' | 'consent' = ''): Promise<string> 
       });
     };
     try {
-      tokenClient.requestAccessToken({ prompt });
+      // Only provide the prompt parameter when we explicitly want to force consent.
+      // Omitting the parameter lets GIS attempt a silent refresh without UI when possible.
+      if (prompt === 'consent') {
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      } else {
+        tokenClient.requestAccessToken();
+      }
     } catch (e) {
       reject(e instanceof Error ? e : new Error(String(e)));
     }
@@ -193,7 +199,7 @@ const requestInteractive = async (prompt: '' | 'consent' = ''): Promise<string> 
  * @param opts.prompt Force Google consent screen ('consent') or default ('')
  * @returns Promise resolving to a valid OAuth access token
  */
-export const getAccessToken = async (opts: { prompt?: 'consent' | '' } = {}): Promise<string> => {
+export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise<string> => {
   // Try to reuse a cached valid token from storage
   loadCachedToken();
   if (accessToken && Date.now() < tokenExpiry) return accessToken;
@@ -208,7 +214,7 @@ export const getAccessToken = async (opts: { prompt?: 'consent' | '' } = {}): Pr
   if (requesting) return new Promise((res) => pending.push(res));
   requesting = true;
   try {
-    const tok = await requestInteractive(opts.prompt ?? '');
+    const tok = await requestInteractive(opts.prompt);
     persistToken();
     return tok;
   } finally {

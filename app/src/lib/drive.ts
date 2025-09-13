@@ -1,11 +1,6 @@
 import { getAccessToken } from './auth.js';
-import type {
-  DriveFileMeta,
-  DriveOpenState,
-  SaveOptions,
-  SaverOptions,
-  TiddlyWiki
-} from './types.js';
+import { getTiddlyWikiFromWindow } from './tw.js';
+import type { DriveFileMeta, DriveOpenState, SaveOptions, SaverOptions } from './types.js';
 import { showError, showToast } from './ui.js';
 
 let currentFileId: string | null = null;
@@ -106,7 +101,7 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions 
   if (wikiSaverRegistered) return;
   const attempt = (): void => {
     const win = iframe.contentWindow;
-    const tw: TiddlyWiki | undefined = (win as unknown as { $tw?: TiddlyWiki } | null)?.$tw;
+    const tw = getTiddlyWikiFromWindow(win);
     if (!tw || !tw.saverHandler || !Array.isArray(tw.saverHandler.savers)) {
       setTimeout(attempt, 600);
       return;

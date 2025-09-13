@@ -12,7 +12,7 @@ export type GoogleOAuth2TokenResponse = {
  */
 export type GoogleTokenClient = {
   callback: (resp: GoogleOAuth2TokenResponse) => void;
-  requestAccessToken: (args?: { prompt?: 'consent' | '' }) => void;
+  requestAccessToken: (args?: { prompt?: 'consent' }) => void;
 };
 
 /**
@@ -47,28 +47,4 @@ export type SaverOptions = {
  */
 export type SaveOptions = {
   autosave?: boolean;
-};
-
-/**
- * TiddlyWiki saver entry minimal shape used by the app.
- */
-export type TWSaver = {
-  info: { name: string; priority: number; capabilities: string[] };
-  save: (text: string, method: string, callback: (err?: string) => void) => Promise<boolean>;
-};
-
-/**
- * TiddlyWiki saver handler shape used by the app.
- */
-export type TWSaverHandler = {
-  savers: TWSaver[];
-  numChanges: number;
-  updateDirtyStatus: () => void;
-};
-
-/**
- * Minimal TiddlyWiki interface exposed on window.$tw that we rely on.
- */
-export type TiddlyWiki = {
-  saverHandler?: TWSaverHandler;
 };

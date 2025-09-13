@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
   import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
+  import { getTiddlyWikiFromWindow } from '$lib/tw';
   import { showToast } from '$lib/ui';
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
@@ -93,10 +94,8 @@
       return;
     }
     try {
-      const win = iframeEl?.contentWindow as unknown as {
-        $tw?: { saverHandler?: { saveWiki?: () => void } };
-      };
-      const saveWiki = win.$tw?.saverHandler?.saveWiki;
+      const tw = getTiddlyWikiFromWindow(iframeEl?.contentWindow ?? null);
+      const saveWiki = tw?.saverHandler?.saveWiki;
       if (typeof saveWiki === 'function') {
         saveWiki();
       } else {
