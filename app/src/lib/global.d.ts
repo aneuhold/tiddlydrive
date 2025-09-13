@@ -1,4 +1,4 @@
-import type { TiddlyWiki } from './types.js';
+import type { TiddlyWiki } from './services/tiddlyWiki/types';
 
 // Minimal ambient declarations for Google Identity Services and TiddlyWiki
 declare global {

@@ -1,6 +1,6 @@
 import { getAccessToken } from '$lib/auth.js';
 import googleDriveRepository from '$lib/repositories/googleDriveRepository';
-import type { SaverOptions } from '$lib/services/tiddlyWikiService';
+import type { SaverOptions } from '$lib/services/tiddlyWiki/types';
 import tiddlyWikiService from '$lib/services/tiddlyWikiService';
 import type { DriveFileMeta, DriveOpenState, SaveOptions } from '$lib/types';
 import { showError, showToast } from '$lib/ui/UiHost.svelte';
