@@ -1,3 +1,5 @@
+import type { Prefs } from '$lib/prefs';
+
 /**
  * Minimal Google Identity Services token response shape used by this app.
  */
@@ -38,8 +40,7 @@ export type DriveFileMeta = {
  * Options used when registering the TiddlyWiki saver integration.
  */
 export type SaverOptions = {
-  disableSave?: () => boolean;
-  autosaveEnabled?: () => boolean;
+  preferences: () => Prefs;
 };
 
 /**

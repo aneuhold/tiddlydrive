@@ -2,6 +2,7 @@
   import { resolve } from '$app/paths';
   import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
   import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
+  import { prefsStore } from '$lib/prefs';
   import { getTiddlyWikiFromWindow } from '$lib/tw';
   import { showToast } from '$lib/ui';
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
@@ -17,57 +18,6 @@
   let showSettings = $state(false);
   let hideFab = $state(false);
 
-  // Legacy cookie writer is no longer used; prefs persist via localStorage.
-  const PREFS_KEY = 'td2:prefs';
-  type Prefs = { autosave: boolean; hotkey: boolean; disableSave: boolean };
-  const prefs = $state<Prefs>({ autosave: true, hotkey: true, disableSave: false });
-
-  /**
-   * Read a simple cookie value by name.
-   *
-   * @param name cookie name
-   * @returns cookie value or null when missing
-   */
-  const readCookie = (name: string): string | null => {
-    const nameEQ = name + '=';
-    return (
-      document.cookie
-        .split(';')
-        .map((c) => c.trim())
-        .find((c) => c.startsWith(nameEQ))
-        ?.substring(nameEQ.length) || null
-    );
-  };
-
-  /** Load prefs from localStorage (fallback to cookies for backward-compat). */
-  const loadPrefs = (): void => {
-    try {
-      const raw = localStorage.getItem(PREFS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<Prefs>;
-        prefs.autosave = parsed.autosave ?? prefs.autosave;
-        prefs.hotkey = parsed.hotkey ?? prefs.hotkey;
-        prefs.disableSave = parsed.disableSave ?? prefs.disableSave;
-        return;
-      }
-    } catch {
-      /* ignore */
-    }
-    // Back-compat with old cookies
-    prefs.autosave = readCookie('enableautosave') !== 'false';
-    prefs.hotkey = readCookie('enablehotkeysave') !== 'false';
-    prefs.disableSave = readCookie('disablesave') === 'true';
-  };
-
-  /** Persist preferences to localStorage. */
-  const persistPrefs = (): void => {
-    try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-    } catch {
-      /* ignore */
-    }
-  };
-
   /**
    * Register cmd/ctrl + S handler.
    *
@@ -75,7 +25,7 @@
    */
   const registerHotkey = (): (() => void) => {
     const handler = (e: KeyboardEvent): void => {
-      if (!prefs.hotkey) return;
+      if (!$prefsStore.enableHotkeySave) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         manualSave();
@@ -89,7 +39,7 @@
 
   /** Trigger a save via TiddlyWiki's saver (no direct HTML serialization). */
   const manualSave = (): void => {
-    if (prefs.disableSave) {
+    if ($prefsStore.disableDriveSave) {
       showToast('Save disabled');
       return;
     }
@@ -119,7 +69,7 @@
   onMount(() => {
     let unregisterHotkey: (() => void) | null = null;
     (async () => {
-      loadPrefs();
+      // prefs loaded via store initialization
       const hasState = !!parseState();
       if (!hasState) {
         status = 'no-state';
@@ -138,8 +88,7 @@
         const frame = iframeEl;
         await loadFile(frame);
         registerWikiSaver(frame, {
-          disableSave: () => prefs.disableSave,
-          autosaveEnabled: () => prefs.autosave
+          preferences: () => $prefsStore
         });
         unregisterHotkey = registerHotkey();
         status = 'ready';
@@ -187,16 +136,9 @@
       {/if}
       <SettingsDialog
         open={showSettings}
-        {prefs}
         {hideFab}
         onAuthenticate={authenticate}
         onClose={() => (showSettings = false)}
-        onPrefsChange={({ key, value }) => {
-          if (key === 'autosave') prefs.autosave = value;
-          else if (key === 'hotkey') prefs.hotkey = value;
-          else if (key === 'disableSave') prefs.disableSave = value;
-          persistPrefs();
-        }}
         onHideFabChange={(value) => {
           hideFab = value;
         }}

@@ -1,5 +1,5 @@
 import { getAccessToken } from './auth.js';
-import { getTiddlyWikiFromWindow } from './tw.js';
+import { applyPageCustomizationsFromWiki, getTiddlyWikiFromWindow } from './tw.js';
 import type { DriveFileMeta, DriveOpenState, SaveOptions, SaverOptions } from './types.js';
 import { showError, showToast } from './ui.js';
 
@@ -95,9 +95,9 @@ export const loadFile = async (iframe: HTMLIFrameElement): Promise<LoadResult> =
  * Attempts to hook into TiddlyWiki's saver pipeline so we save only when TW is dirty.
  *
  * @param iframe The iframe containing the wiki
- * @param opts Optional saver controls (disable and autosave flags)
+ * @param opts Saver controls
  */
-export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions = {}): void => {
+export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions): void => {
   if (wikiSaverRegistered) return;
   const attempt = (): void => {
     const win = iframe.contentWindow;
@@ -106,14 +106,21 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions 
       setTimeout(attempt, 600);
       return;
     }
+
+    // Apply page customizations from wiki once TW is available
+    applyPageCustomizationsFromWiki(tw, document, opts.preferences());
+
     tw.saverHandler.savers.push({
       info: { name: 'tiddly-drive-2', priority: 2000, capabilities: ['save', 'autosave'] },
       save: async (text: string, method: string, callback: (err?: string) => void) => {
-        if (opts.disableSave?.()) {
+        // Get preferences
+        const prefs = opts.preferences();
+
+        if (prefs.disableDriveSave) {
           callback('Saving disabled');
           return false;
         }
-        if (method === 'autosave' && opts.autosaveEnabled && !opts.autosaveEnabled()) {
+        if (method === 'autosave' && !prefs.autosave) {
           callback('Autosave disabled');
           return false;
         }
@@ -126,6 +133,8 @@ export const registerWikiSaver = (iframe: HTMLIFrameElement, opts: SaverOptions 
               sh.numChanges = 0;
               sh.updateDirtyStatus();
             }
+            // If any page customizations (like favicon) changed, reflect them
+            applyPageCustomizationsFromWiki(tw, document, prefs);
           } catch (err) {
             console.warn('[td2/drive] failed to reset TW dirty status', err);
           }
