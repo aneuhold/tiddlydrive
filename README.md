@@ -22,7 +22,7 @@ Huge thanks to the original creator [LordRatte](https://github.com/LordRatte) fo
 ### 🔄 Minimal UI, Maximum Focus
 
 <div align="center">
-  <img src="branding/screenshots/screenshot2-MainUIAddition.png" alt="Main UI" style="max-width: 500px; width: 100%;">
+  <img src="branding/screenshots/screenshot2-MainUIAddition.png" alt="Main UI" width="500px">
 </div>
 
 The app adds only a small gear icon to your TiddlyWiki, keeping the interface clean and distraction-free while providing access to essential settings.
@@ -36,7 +36,7 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
 ### ⚙️ Customizable Settings
 
 <div align="center">
-  <img src="branding/screenshots/screenshot3-SettingsPanel.png" alt="Settings Panel" style="max-width: 500px; width: 100%;">
+  <img src="branding/screenshots/screenshot3-SettingsPanel.png" alt="Settings Panel" width="500px">
 </div>
 
 - Auto-save preferences and authentication
@@ -45,7 +45,7 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
 ### 🎨 Wiki Integration
 
 <div align="center">
-  <img src="branding/screenshots/screenshot4-WikiCustomizations.png" alt="Wiki Customizations" style="max-width: 500px; width: 100%;">
+  <img src="branding/screenshots/screenshot4-WikiCustomizations.png" alt="Wiki Customizations" width="500px">
 </div>
 
 - Uses your wiki's custom favicon and title
@@ -54,7 +54,7 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
 ### 🛡️ Conflict Detection
 
 <div align="center">
-  <img src="branding/screenshots/screenshot5-ConflictDetection.png" alt="Conflict Detection" style="max-width: 500px; width: 100%;">
+  <img src="branding/screenshots/screenshot5-ConflictDetection.png" alt="Conflict Detection" width="500px">
 </div>
 
 - Detects when files are modified in another location
@@ -63,7 +63,7 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
 ### 📱 Mobile Support
 
 <div align="center">
-  <img src="branding/screenshots/screenshot6-MobileSupport.png" alt="Mobile Support" style="max-width: 500px; width: 100%;">
+  <img src="branding/screenshots/screenshot6-MobileSupport.png" alt="Mobile Support" style="max-width="500px">
 </div>
 
 - Responsive design for phones and tablets
