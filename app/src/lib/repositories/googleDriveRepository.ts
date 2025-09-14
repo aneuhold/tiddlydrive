@@ -1,17 +1,19 @@
 import { getAccessToken } from '$lib/auth.js';
-import type { DriveFileMeta } from '$lib/types';
+import type { DriveFileMeta, GapiResponse, GoogleAPIClient } from '$lib/types';
 
 /**
  * Repository class for handling low-level Google Drive API operations.
  * Encapsulates URLs, HTTP requests, and response handling.
  */
 class GoogleDriveRepository {
-  private readonly baseUrl = 'https://www.googleapis.com/drive/v3';
-  private readonly uploadUrl = 'https://www.googleapis.com/upload/drive/v3';
-
   // Common query parameters for Shared Drive support
-  private readonly sharedDriveParams = 'supportsAllDrives=true&includeItemsFromAllDrives=true';
-  private readonly sharedDriveParamsOnly = 'supportsAllDrives=true';
+  private readonly sharedDriveParams = {
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
+  } as const;
+  private readonly sharedDriveParamsOnly = {
+    supportsAllDrives: true
+  } as const;
 
   /**
    * Fetches file metadata from Google Drive API.
@@ -21,44 +23,37 @@ class GoogleDriveRepository {
    * @returns Promise resolving to the file metadata
    */
   async getFileMetadata(fileId: string, token: string): Promise<DriveFileMeta> {
-    const url = `${this.baseUrl}/files/${fileId}?fields=id,name,mimeType,modifiedTime,version&${this.sharedDriveParams}`;
-    const fetchOptions = {
-      headers: { Authorization: `Bearer ${token}` }
-    };
+    // Ensure gapi has a token set for subsequent calls
+    this.ensureGapiToken(token);
 
-    const response = await this.fetchWithAuthRetry(url, fetchOptions, 'metadata fetch');
+    const request = () =>
+      this.getClient().request<DriveFileMeta>({
+        path: `/drive/v3/files/${encodeURIComponent(fileId)}`,
+        method: 'GET',
+        params: {
+          fields: 'id,name,mimeType,modifiedTime,version',
+          ...this.sharedDriveParams
+        }
+      });
 
-    // If retry succeeded, return the result
-    if (response && response.ok) {
-      return (await response.json()) as DriveFileMeta;
-    }
-
-    // If retry failed or wasn't needed, handle the original response
-    const originalResponse = response || (await fetch(url, fetchOptions));
-
-    if (!originalResponse.ok) {
-      let body = '';
-      try {
-        body = await originalResponse.text();
-      } catch (err) {
-        console.warn('[td2/drive] metadata error body read failed', err);
+    try {
+      const resp: GapiResponse<DriveFileMeta> = await request();
+      return resp.result;
+    } catch (err: unknown) {
+      // Attempt one silent token refresh on auth failures, then retry
+      if (this.isAuthError(err)) {
+        const newToken = await getAccessToken();
+        this.ensureGapiToken(newToken);
+        try {
+          const retryResp = await request();
+          return retryResp.result;
+        } catch (retryErr: unknown) {
+          throw this.normalizeError(retryErr, 'Metadata fetch');
+        }
       }
-      console.warn('[td2/drive] metadata fetch failed', originalResponse.status, body);
-
-      if (originalResponse.status === 404) {
-        // Heuristics: common causes while developing without Marketplace "Open with" flow
-        const hints = [
-          'Confirm the file ID is correct (no extra characters).',
-          'Ensure you are logged into the same Google account that owns / can access the file.',
-          'If the file lives in a Shared Drive, Shared Drive support is enabled (retry after refresh).',
-          'If you are manually crafting the ?state= parameter while using only the drive.file scope, the token may NOT grant this file (drive.file only covers files the user opened via the official Drive UI/Open-with or a Picker).'
-        ];
-        throw new Error('File not found (404). Possible causes:\n- ' + hints.join('\n- '));
-      }
-      throw new Error('Metadata fetch failed: ' + originalResponse.status.toString() + ' ' + body);
+      // Not an auth error: throw normalized
+      throw this.normalizeError(err, 'Metadata fetch');
     }
-
-    return (await originalResponse.json()) as DriveFileMeta;
   }
 
   /**
@@ -69,33 +64,35 @@ class GoogleDriveRepository {
    * @returns Promise resolving to the file content as text
    */
   async downloadFileContent(fileId: string, token: string): Promise<string> {
-    const url = `${this.baseUrl}/files/${fileId}?alt=media&${this.sharedDriveParamsOnly}`;
-    const fetchOptions = {
-      headers: { Authorization: `Bearer ${token}` }
-    };
+    this.ensureGapiToken(token);
 
-    const response = await this.fetchWithAuthRetry(url, fetchOptions, 'download');
+    const request = () =>
+      this.getClient().request<string>({
+        path: `/drive/v3/files/${encodeURIComponent(fileId)}`,
+        method: 'GET',
+        params: {
+          alt: 'media',
+          ...this.sharedDriveParamsOnly
+        }
+      });
 
-    // If retry succeeded, return the result
-    if (response && response.ok) {
-      return await response.text();
-    }
-
-    // If retry failed or wasn't needed, handle the original response
-    const originalResponse = response || (await fetch(url, fetchOptions));
-
-    if (!originalResponse.ok) {
-      let body = '';
-      try {
-        body = await originalResponse.text();
-      } catch (err) {
-        console.warn('[td2/drive] download error body read failed', err);
+    try {
+      const resp: GapiResponse<string> = await request();
+      // For media downloads, prefer the raw `.body` string
+      return resp.body;
+    } catch (err: unknown) {
+      if (this.isAuthError(err)) {
+        const newToken = await getAccessToken();
+        this.ensureGapiToken(newToken);
+        try {
+          const retryResp: GapiResponse<string> = await request();
+          return retryResp.body;
+        } catch (retryErr: unknown) {
+          throw this.normalizeError(retryErr, 'File download');
+        }
       }
-      console.warn('[td2/drive] download failed', originalResponse.status, body);
-      throw new Error('File download failed: ' + originalResponse.status.toString() + ' ' + body);
+      throw this.normalizeError(err, 'File download');
     }
-
-    return await originalResponse.text();
   }
 
   /**
@@ -107,50 +104,40 @@ class GoogleDriveRepository {
    * @returns Promise resolving to the updated file metadata
    */
   async uploadFileContent(fileId: string, content: string, token: string): Promise<DriveFileMeta> {
-    const url = `${this.uploadUrl}/files/${fileId}?uploadType=media&${this.sharedDriveParamsOnly}&fields=id,modifiedTime,version`;
-    const fetchOptions = {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'text/html; charset=UTF-8'
-        // No ETag precondition, because Google doesn't provide that. We use version instead.
-      },
-      body: content
-    };
+    this.ensureGapiToken(token);
 
-    const response = await this.fetchWithAuthRetry(url, fetchOptions, 'upload');
+    const request = () =>
+      this.getClient().request<DriveFileMeta>({
+        // Note: uploads use the upload endpoint implicitly when using gapi with `uploadType` param
+        path: `/upload/drive/v3/files/${encodeURIComponent(fileId)}`,
+        method: 'PATCH',
+        params: {
+          uploadType: 'media',
+          fields: 'id,modifiedTime,version',
+          ...this.sharedDriveParamsOnly
+        },
+        headers: {
+          'Content-Type': 'text/html; charset=UTF-8'
+        },
+        body: content
+      });
 
-    // If retry succeeded, return the result
-    if (response && response.ok) {
-      return (await response.json()) as DriveFileMeta;
+    try {
+      const resp = await request();
+      return resp.result;
+    } catch (err: unknown) {
+      if (this.isAuthError(err)) {
+        const newToken = await getAccessToken();
+        this.ensureGapiToken(newToken);
+        try {
+          const retryResp = await request();
+          return retryResp.result;
+        } catch (retryErr: unknown) {
+          throw this.normalizeError(retryErr, 'Save');
+        }
+      }
+      throw this.normalizeError(err, 'Save');
     }
-
-    // If retry failed or wasn't needed, handle the original response
-    const originalResponse = response || (await fetch(url, fetchOptions));
-
-    if (!originalResponse.ok) {
-      let detail = '';
-      try {
-        detail = await originalResponse.text();
-      } catch (_err) {
-        /* ignore */
-      }
-      console.warn('[td2/drive] save failed', originalResponse.status, detail);
-
-      if (originalResponse.status === 401) {
-        throw new Error(
-          'Unauthorized: The OAuth token has expired or is invalid. Please try again.'
-        );
-      }
-      if (originalResponse.status === 403) {
-        throw new Error(
-          'Permission Denied: The app token lacks write access for this file. If you manually crafted the state parameter, Drive may not have granted drive.file access. Open the file via Google Drive "Open with" (after install) or temporarily use a broader scope for testing.'
-        );
-      }
-      throw new Error('Save failed ' + originalResponse.status.toString() + ' ' + detail);
-    }
-
-    return (await originalResponse.json()) as DriveFileMeta;
   }
 
   /**
@@ -186,64 +173,92 @@ class GoogleDriveRepository {
   }
 
   /**
-   * Retries a fetch request with a fresh token when encountering auth errors (401/403).
-   * Uses silent token refresh to avoid prompting the user unnecessarily.
+   * Determines whether an error thrown by gapi is likely an auth error.
    *
-   * @param url The URL to retry
-   * @param fetchOptions The original fetch options (method, headers, body, etc.)
-   * @param operation Description of the operation for error messages
-   * @returns Promise resolving to the Response object
+   * @param err The error thrown by the Google API client
+   * @returns True if the error contains 401/403 semantics
    */
-  private async retryWithFreshToken(
-    url: string,
-    fetchOptions: RequestInit,
-    operation: string
-  ): Promise<Response> {
-    // First try silent refresh (no prompt) - this should handle most token expirations
-    const newToken = await getAccessToken();
-    const retryOptions = {
-      ...fetchOptions,
-      headers: {
-        ...(fetchOptions.headers as Record<string, string>),
-        Authorization: `Bearer ${newToken}`
-      }
-    };
-
-    const retryResponse = await fetch(url, retryOptions);
-    if (!retryResponse.ok) {
-      throw new Error(`Retry ${operation} failed: ${retryResponse.status}`);
-    }
-
-    return retryResponse;
+  private isAuthError(err: unknown): boolean {
+    const e = err as {
+      message?: string;
+      status?: number;
+      result?: { error?: { code?: number; message?: string } };
+    } | null;
+    const msg = (e && e.message) || '';
+    const code = (e && (e.result?.error?.code ?? e.status)) ?? undefined;
+    return code === 401 || code === 403 || /unauthorized|forbidden/i.test(msg);
   }
 
   /**
-   * Performs a fetch request with automatic retry on auth errors.
-   * Returns the successful response or falls through to original error handling.
+   * Normalizes various error shapes coming from gapi to a readable Error.
    *
-   * @param url The URL to fetch
-   * @param fetchOptions The fetch options
-   * @param operation Description for error messages
-   * @returns Promise resolving to Response or null if retry failed
+   * @param err The original error thrown by the Google API client
+   * @param operation A short label for the operation being performed
+   * @returns A normalized Error with helpful message and guidance
    */
-  private async fetchWithAuthRetry(
-    url: string,
-    fetchOptions: RequestInit,
-    operation: string
-  ): Promise<Response | null> {
-    const response = await fetch(url, fetchOptions);
+  private normalizeError(err: unknown, operation: string): Error {
+    const e = err as {
+      status?: number;
+      statusText?: string;
+      body?: string;
+      result?: { error?: { code?: number; message?: string } };
+    } | null;
+    const code = (e && (e.result?.error?.code ?? e.status)) ?? undefined;
+    const statusText = (e && (e.result?.error?.message ?? e.statusText)) ?? '';
+    const body = (e && e.body) ?? '';
+    const codePart = code ? ` ${String(code)}` : '';
+    const msg = `[td2/drive] ${operation} failed${codePart} ${statusText || body || ''}`;
 
-    if (response.status === 401 || response.status === 403) {
-      // Try to refresh token with consent prompt for both unauthorized (401) and forbidden (403)
-      try {
-        return await this.retryWithFreshToken(url, fetchOptions, operation);
-      } catch (_retryError) {
-        // Fall through to handle original error
-        return null;
-      }
+    if (code === 404) {
+      const hints = [
+        'Confirm the file ID is correct (no extra characters).',
+        'Ensure you are logged into the same Google account that owns / can access the file.',
+        'If the file lives in a Shared Drive, Shared Drive support is enabled (retry after refresh).',
+        'If you are manually crafting the ?state= parameter while using only the drive.file scope, the token may NOT grant this file.'
+      ];
+      return new Error('File not found (404). Possible causes:\n- ' + hints.join('\n- '));
     }
+    if (code === 401) {
+      return new Error(
+        'Unauthorized: The OAuth token has expired or is invalid. Please try again.'
+      );
+    }
+    if (code === 403) {
+      return new Error(
+        'Permission Denied: The app token lacks access for this file. If manually crafting the state parameter, Drive may not have granted drive.file access. Open the file via Google Drive "Open with" or use a broader scope temporarily for testing.'
+      );
+    }
+    return new Error(msg.trim());
+  }
 
-    return response;
+  /**
+   * Ensures the provided token is set on gapi.client for subsequent calls.
+   *
+   * @param token OAuth access token to set
+   */
+  private ensureGapiToken(token: string): void {
+    try {
+      const client = this.getClient();
+      const existing = client.getToken();
+      if (!existing || existing.access_token !== token) {
+        client.setToken({ access_token: token });
+      }
+    } catch {
+      // Best-effort only
+    }
+  }
+
+  /**
+   * Provides a non-null Google API client instance or throws if unavailable.
+   *
+   * @returns The initialized `gapi.client` instance
+   */
+  private getClient(): NonNullable<GoogleAPIClient> {
+    const client = window.gapi?.client;
+    if (!client) {
+      throw new Error('Google API client not available');
+    }
+    return client;
   }
 }
 

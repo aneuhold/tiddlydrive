@@ -63,7 +63,6 @@
 
 <svelte:head>
   <title>Tiddly Drive 2 – App</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </svelte:head>
 
 <main class="app-shell" class:hasfile={status === 'ready'}>
