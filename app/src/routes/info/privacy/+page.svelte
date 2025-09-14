@@ -21,7 +21,8 @@
         Drive’s “Open with” flow.
       </li>
       <li>
-        <strong>Minimal Metadata:</strong> File name, mime type, modified time (for conflict detection).
+        <strong>Minimal Metadata:</strong>
+        File name, mime type, modified time, and file version (for conflict detection).
       </li>
     </ul>
     <h2>Data We Do <em>Not</em> Collect</h2>
@@ -38,8 +39,8 @@
     <h2>Data Storage & Retention</h2>
     <p>
       No persistent storage outside your browser’s runtime is used. When you close the tab, the
-      in‑memory content and token are discarded. Cookies are used only for local preference toggles
-      (autosave, hotkey, saver mode) and are not transmitted to any backend.
+      in‑memory content and token are discarded. Any local preferences (e.g. autosave enabled) are
+      stored in the browser's localStorage.
     </p>
     <h2>Third‑Party Services</h2>
     <ul>
@@ -50,9 +51,9 @@
     </ul>
     <h2>Security</h2>
     <p>
-      All requests occur over HTTPS. Save operations use conditional headers (ETag / modified time)
-      to help prevent accidental overwrites. No secret keys are embedded client‑side beyond the
-      public OAuth Client ID.
+      All requests occur over HTTPS. Save operations perform a version check against Google Drive’s
+      reported file version to help prevent accidental overwrites. No secret keys are embedded
+      client‑side beyond the public OAuth Client ID.
     </p>
     <h2>Data Deletion</h2>
     <p>

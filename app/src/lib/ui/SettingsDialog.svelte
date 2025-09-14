@@ -1,17 +1,13 @@
-<script lang="ts" module>
-  export type Prefs = { autosave: boolean; hotkey: boolean; disableSave: boolean };
-</script>
-
 <script lang="ts">
   import { resolve } from '$app/paths';
+  import { prefsStore } from '$lib/prefs';
+  import CollapsibleSection from '$lib/ui/CollapsibleSection.svelte';
 
   const props = $props<{
     open: boolean;
-    prefs: import('./SettingsDialog.svelte').Prefs;
     hideFab?: boolean;
     onClose?: () => void;
     onAuthenticate?: () => void;
-    onPrefsChange?: (p: { key: 'autosave' | 'hotkey' | 'disableSave'; value: boolean }) => void;
     onHideFabChange?: (value: boolean) => void;
   }>();
 
@@ -41,42 +37,8 @@
     <h3>Settings</h3>
 
     <label>
-      <input
-        type="checkbox"
-        checked={props.prefs.autosave}
-        onchange={(e) =>
-          props.onPrefsChange?.({
-            key: 'autosave',
-            value: (e.currentTarget as HTMLInputElement).checked
-          })}
-      />
+      <input type="checkbox" bind:checked={$prefsStore.autosave} />
       Autosave
-    </label>
-
-    <label>
-      <input
-        type="checkbox"
-        checked={props.prefs.hotkey}
-        onchange={(e) =>
-          props.onPrefsChange?.({
-            key: 'hotkey',
-            value: (e.currentTarget as HTMLInputElement).checked
-          })}
-      />
-      Hotkey Save
-    </label>
-
-    <label>
-      <input
-        type="checkbox"
-        checked={props.prefs.disableSave}
-        onchange={(e) =>
-          props.onPrefsChange?.({
-            key: 'disableSave',
-            value: (e.currentTarget as HTMLInputElement).checked
-          })}
-      />
-      Disable Drive Save
     </label>
 
     <label>
@@ -88,13 +50,25 @@
       Hide settings button until next reload
     </label>
 
+    <CollapsibleSection title="Page Customizations">
+      <label>
+        <input type="checkbox" bind:checked={$prefsStore.useWikiFavicon} />
+        Use favicon from `$:/favicon.ico` tiddler
+      </label>
+
+      <label>
+        <input type="checkbox" bind:checked={$prefsStore.useWikiTitle} />
+        Use title from `$:/SiteTitle` and `$:/SiteSubtitle`
+      </label>
+    </CollapsibleSection>
+
     <p class="help">
       Learn more on the
       <a href={resolve('/info')} target="_blank" rel="noreferrer noopener">info site</a>.
     </p>
 
     <div class="actions">
-      <button onclick={() => props.onAuthenticate?.()}>Authenticate</button>
+      <button onclick={() => props.onAuthenticate?.()}>Re-authenticate</button>
       <button class="secondary" onclick={() => props.onClose?.()}>Close</button>
     </div>
   </div>

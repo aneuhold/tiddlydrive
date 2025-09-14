@@ -1,11 +1,12 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getAccessToken, hasValidToken, initAuth } from '$lib/auth';
-  import { loadFile, parseState, registerWikiSaver } from '$lib/drive';
-  import { showToast } from '$lib/ui';
+  import { getAccessToken, initAuth } from '$lib/auth';
+  import { prefsStore } from '$lib/prefs';
+  import googleDriveService from '$lib/services/googleDriveService';
+
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
-  import UiHost from '$lib/ui/UiHost.svelte';
+  import UiHost, { showError, showToast } from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
 
   type Status = 'initializing' | 'no-state' | 'loading' | 'ready' | 'error';
@@ -16,112 +17,22 @@
   let showSettings = $state(false);
   let hideFab = $state(false);
 
-  // Legacy cookie writer is no longer used; prefs persist via localStorage.
-  const PREFS_KEY = 'td2:prefs';
-  type Prefs = { autosave: boolean; hotkey: boolean; disableSave: boolean };
-  const prefs = $state<Prefs>({ autosave: true, hotkey: true, disableSave: false });
-
-  /**
-   * Read a simple cookie value by name.
-   *
-   * @param name cookie name
-   * @returns cookie value or null when missing
-   */
-  const readCookie = (name: string): string | null => {
-    const nameEQ = name + '=';
-    return (
-      document.cookie
-        .split(';')
-        .map((c) => c.trim())
-        .find((c) => c.startsWith(nameEQ))
-        ?.substring(nameEQ.length) || null
-    );
-  };
-
-  /** Load prefs from localStorage (fallback to cookies for backward-compat). */
-  const loadPrefs = (): void => {
+  /** Force re-authentication with consent prompt, clearing any cached tokens. */
+  const forceAuthenticate = async (): Promise<void> => {
     try {
-      const raw = localStorage.getItem(PREFS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<Prefs>;
-        prefs.autosave = parsed.autosave ?? prefs.autosave;
-        prefs.hotkey = parsed.hotkey ?? prefs.hotkey;
-        prefs.disableSave = parsed.disableSave ?? prefs.disableSave;
-        return;
-      }
-    } catch {
-      /* ignore */
+      // Force a fresh authentication with consent prompt
+      await getAccessToken({ prompt: 'consent' });
+      showToast('Re-authenticated successfully');
+    } catch (error) {
+      console.error('Force authentication failed:', error);
+      showError('Authentication failed', error instanceof Error ? error.message : String(error));
     }
-    // Back-compat with old cookies
-    prefs.autosave = readCookie('enableautosave') !== 'false';
-    prefs.hotkey = readCookie('enablehotkeysave') !== 'false';
-    prefs.disableSave = readCookie('disablesave') === 'true';
-  };
-
-  /** Persist preferences to localStorage. */
-  const persistPrefs = (): void => {
-    try {
-      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-    } catch {
-      /* ignore */
-    }
-  };
-
-  /**
-   * Register cmd/ctrl + S handler.
-   *
-   * @returns Cleanup function to unregister the handler
-   */
-  const registerHotkey = (): (() => void) => {
-    const handler = (e: KeyboardEvent): void => {
-      if (!prefs.hotkey) return;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        manualSave();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => {
-      window.removeEventListener('keydown', handler);
-    };
-  };
-
-  /** Trigger a save via TiddlyWiki's saver (no direct HTML serialization). */
-  const manualSave = (): void => {
-    if (prefs.disableSave) {
-      showToast('Save disabled');
-      return;
-    }
-    try {
-      const win = iframeEl?.contentWindow as unknown as {
-        $tw?: { saverHandler?: { saveWiki?: () => void } };
-      };
-      const saveWiki = win.$tw?.saverHandler?.saveWiki;
-      if (typeof saveWiki === 'function') {
-        saveWiki();
-      } else {
-        showToast('TiddlyWiki not ready');
-      }
-    } catch (e) {
-      console.error(e);
-      error = 'Save failed';
-    }
-  };
-
-  /** Initiate interactive auth flow, or notify if already authenticated. */
-  const authenticate = async (): Promise<void> => {
-    if (hasValidToken()) {
-      showToast('Already authenticated');
-      return;
-    }
-    await getAccessToken();
   };
 
   onMount(() => {
-    let unregisterHotkey: (() => void) | null = null;
     (async () => {
-      loadPrefs();
-      const hasState = !!parseState();
+      // prefs loaded via store initialization
+      const hasState = !!googleDriveService.parseState();
       if (!hasState) {
         status = 'no-state';
         return;
@@ -137,29 +48,21 @@
           return;
         }
         const frame = iframeEl;
-        await loadFile(frame);
-        registerWikiSaver(frame, {
-          disableSave: () => prefs.disableSave,
-          autosaveEnabled: () => prefs.autosave
+        await googleDriveService.loadFile(frame);
+        googleDriveService.registerWikiSaver(frame, {
+          preferences: () => $prefsStore
         });
-        unregisterHotkey = registerHotkey();
         status = 'ready';
       } catch (e) {
         error = (e as Error).message;
         status = 'error';
       }
     })();
-    return () => {
-      if (unregisterHotkey) unregisterHotkey();
-    };
   });
-
-  // settings dialog open/close is controlled in the component
 </script>
 
 <svelte:head>
   <title>Tiddly Drive 2 – App</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </svelte:head>
 
 <main class="app-shell" class:hasfile={status === 'ready'}>
@@ -188,16 +91,9 @@
       {/if}
       <SettingsDialog
         open={showSettings}
-        {prefs}
         {hideFab}
-        onAuthenticate={authenticate}
+        onAuthenticate={forceAuthenticate}
         onClose={() => (showSettings = false)}
-        onPrefsChange={({ key, value }) => {
-          if (key === 'autosave') prefs.autosave = value;
-          else if (key === 'hotkey') prefs.hotkey = value;
-          else if (key === 'disableSave') prefs.disableSave = value;
-          persistPrefs();
-        }}
         onHideFabChange={(value) => {
           hideFab = value;
         }}

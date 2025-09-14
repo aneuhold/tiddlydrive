@@ -16,6 +16,64 @@ export type GoogleTokenClient = {
 };
 
 /**
+ * Minimal Google API client types for token management.
+ */
+export type GoogleApiToken = {
+  access_token: string;
+  expires_in?: number;
+};
+
+/**
+ * Minimal Google API client shape used by this app. This comes from
+ * `window.gapi`.
+ */
+export type GoogleAPI = {
+  load: (api: string, callback: () => void) => void;
+  client: GoogleAPIClient;
+};
+
+export type GoogleAPIClient = {
+  init: (config: { apiKey?: string; discoveryDocs?: string[] }) => Promise<void>;
+  getToken: () => GoogleApiToken | null;
+  setToken: (token: GoogleApiToken | null) => void;
+  request: <T = unknown>(args: {
+    path: string;
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    params?: Record<string, string | number | boolean | undefined>;
+    body?: unknown;
+    headers?: Record<string, string>;
+  }) => Promise<GapiResponse<T>>;
+  drive: {
+    files: {
+      get: (args: {
+        fileId: string;
+        fields?: string;
+        alt?: string;
+        supportsAllDrives?: boolean;
+        includeItemsFromAllDrives?: boolean;
+      }) => Promise<GapiResponse<unknown>>;
+      update: (args: {
+        fileId: string;
+        fields?: string;
+        supportsAllDrives?: boolean;
+        includeItemsFromAllDrives?: boolean;
+      }) => Promise<GapiResponse<unknown>>;
+    };
+  };
+};
+
+/**
+ * Minimal shape of a response returned by gapi.client.request.
+ */
+export type GapiResponse<T> = {
+  result: T;
+  body: string;
+  status: number;
+  statusText: string;
+  headers?: Record<string, string>;
+};
+
+/**
  * Shape of the Google Drive "state" parameter we read from the URL.
  */
 export type DriveOpenState = {
@@ -24,22 +82,20 @@ export type DriveOpenState = {
 };
 
 /**
- * Minimal subset of Drive file metadata used by the app.
+ * Minimal subset of Drive file metadata used by the app. See the
+ * [Google Drive v3 API docs](https://developers.google.com/workspace/drive/api/reference/rest/v3/files#File)
+ * for the full shape.
  */
 export type DriveFileMeta = {
   id: string;
-  name: string;
+  name?: string;
   mimeType?: string;
   modifiedTime?: string;
-  version?: string | number;
-};
-
-/**
- * Options used when registering the TiddlyWiki saver integration.
- */
-export type SaverOptions = {
-  disableSave?: () => boolean;
-  autosaveEnabled?: () => boolean;
+  /**
+   * This is the version number that gets incremented on each change. It is a whole integer but
+   * returned as a string by the API.
+   */
+  version?: string;
 };
 
 /**
@@ -47,28 +103,4 @@ export type SaverOptions = {
  */
 export type SaveOptions = {
   autosave?: boolean;
-};
-
-/**
- * TiddlyWiki saver entry minimal shape used by the app.
- */
-export type TWSaver = {
-  info: { name: string; priority: number; capabilities: string[] };
-  save: (text: string, method: string, callback: (err?: string) => void) => Promise<boolean>;
-};
-
-/**
- * TiddlyWiki saver handler shape used by the app.
- */
-export type TWSaverHandler = {
-  savers: TWSaver[];
-  numChanges: number;
-  updateDirtyStatus: () => void;
-};
-
-/**
- * Minimal TiddlyWiki interface exposed on window.$tw that we rely on.
- */
-export type TiddlyWiki = {
-  saverHandler?: TWSaverHandler;
 };

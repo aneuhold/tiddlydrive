@@ -11,6 +11,10 @@ const viteConfig = defineConfig({
       src: path.resolve('./src')
     },
     conditions: process.env.VITEST ? ['browser'] : undefined
+  },
+  preview: {
+    // Same port as dev for easier testing
+    port: 4317
   }
 });
 
