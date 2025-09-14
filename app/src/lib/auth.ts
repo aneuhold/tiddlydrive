@@ -203,19 +203,19 @@ export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise
     }
 
     tokenClient.callback = (resp: GoogleOAuth2TokenResponse) => {
-      if ((resp as { error?: unknown }).error) {
+      if (resp.error) {
         // If caller didn't explicitly request consent, indicate that consent is required so
         // the UI can trigger an interactive flow in response to a user gesture.
         if (opts.prompt !== 'consent') {
           reject(new Error('consent_required'));
           return;
         }
-        reject(new Error(String((resp as { error: unknown }).error)));
+        reject(new Error(resp.error));
         return;
       }
 
-      const accessToken = (resp as { access_token: string }).access_token;
-      const expiresIn = Number((resp as { expires_in?: number | string }).expires_in ?? 0);
+      const accessToken = resp.access_token;
+      const expiresIn = resp.expires_in;
 
       // Set token in Google API client for future requests
       const gapiClient = window.gapi && window.gapi.client;
