@@ -20,7 +20,7 @@
         <strong>Minimal Scope:</strong> Uses only <code>drive.file</code> for the files you choose.
       </li>
       <li><strong>Client‑Side Only:</strong> No server stores your content.</li>
-      <li><strong>Open Source:</strong> MIT licensed and community friendly.</li>
+      <li><strong>Open Source:</strong> GNU licensed and community friendly.</li>
     </ul>
   </section>
   <section class="actions">
