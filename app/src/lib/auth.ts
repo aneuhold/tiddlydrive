@@ -9,8 +9,6 @@ const SCOPE_QUERY_PARAM = 'td_scope';
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 
 let tokenClient: GoogleTokenClient | null = null;
-let googleAPIInitialized = false;
-let googleIdentityServicesInitialized = false;
 const TOKEN_STORAGE_KEY = 'td2_gapi_token';
 
 type StoredToken = {
@@ -111,14 +109,24 @@ const determineScope = (): string => {
  * Initializes the Google API client.
  */
 const initializeGapiClient = async (): Promise<void> => {
-  if (!window.gapi?.client) {
-    throw new Error('Google API client not available');
+  // Ensure the base gapi object is present
+  await waitForGapi();
+  const gapiObj = window.gapi;
+  if (!gapiObj) {
+    throw new Error('Google API not available');
   }
-  await window.gapi.client.init({
+
+  // Ensure the 'client' module is loaded
+  await new Promise<void>((resolve) => {
+    gapiObj.load('client', () => {
+      resolve();
+    });
+  });
+
+  await gapiObj.client.init({
     apiKey: WEB_API_KEY,
     discoveryDocs: [DISCOVERY_DOC]
   });
-  googleAPIInitialized = true;
 };
 
 /**
@@ -142,28 +150,14 @@ const initializeGoogleIdentityServices = async (): Promise<void> => {
     scope,
     callback: () => {} // Will be set per request
   });
-  googleIdentityServicesInitialized = true;
 };
 
 /**
  * Initializes both Google API client and Google Identity Services.
  */
 export const initAuth = async (): Promise<void> => {
-  await waitForGapi();
-
-  if (!window.gapi) {
-    throw new Error('Google API not available');
-  }
-
-  window.gapi.load('client', () => {
-    initializeGapiClient().catch(console.error);
-  });
+  await initializeGapiClient();
   await initializeGoogleIdentityServices();
-
-  // Wait for both to be initialized
-  while (!googleAPIInitialized || !googleIdentityServicesInitialized) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
 };
 
 /**
@@ -183,7 +177,7 @@ export const initAuth = async (): Promise<void> => {
  */
 export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise<string> => {
   // Ensure auth is initialized
-  if (!tokenClient || !googleAPIInitialized || !googleIdentityServicesInitialized) {
+  if (!tokenClient || !window.gapi?.client) {
     await initAuth();
   }
 
@@ -192,67 +186,54 @@ export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise
       reject(new Error('Token client not initialized'));
       return;
     }
-
     if (!window.gapi?.client) {
       reject(new Error('Google API client not available'));
       return;
     }
 
     const scope = determineScope();
-    // Try stored token (survives reloads) first
-    const stored = readStoredToken(scope);
-    if (stored && !opts.prompt) {
-      // Set token into gapi client and return it
+
+    // If we have a still-valid stored token for this scope and no explicit consent request,
+    // reuse it to avoid an extra network round trip.
+    const stored = !opts.prompt ? readStoredToken(scope) : null;
+    if (stored) {
       window.gapi.client.setToken({ access_token: stored.access_token });
       resolve(stored.access_token);
       return;
     }
 
-    // If we already have an in-memory token and caller didn't request consent, reuse it immediately.
-    const existing = window.gapi.client.getToken();
-    if (existing && !opts.prompt) {
-      resolve(existing.access_token);
-      return;
-    }
-
     tokenClient.callback = (resp: GoogleOAuth2TokenResponse) => {
-      if (resp.error) {
-        // If caller didn't explicitly request consent, indicate that consent is required
-        // so the UI can trigger an interactive flow in response to a user gesture.
+      if ((resp as { error?: unknown }).error) {
+        // If caller didn't explicitly request consent, indicate that consent is required so
+        // the UI can trigger an interactive flow in response to a user gesture.
         if (opts.prompt !== 'consent') {
           reject(new Error('consent_required'));
           return;
         }
-        reject(new Error(resp.error));
+        reject(new Error(String((resp as { error: unknown }).error)));
         return;
       }
 
+      const accessToken = (resp as { access_token: string }).access_token;
+      const expiresIn = Number((resp as { expires_in?: number | string }).expires_in ?? 0);
+
       // Set token in Google API client for future requests
-      if (window.gapi?.client) {
-        window.gapi.client.setToken({
-          access_token: resp.access_token,
-          expires_in: resp.expires_in
-        });
+      const gapiClient = window.gapi && window.gapi.client;
+      if (gapiClient) {
+        gapiClient.setToken({ access_token: accessToken });
       }
 
-      // Persist token to session storage (scoped)
-      if (typeof resp.expires_in === 'number') {
-        writeStoredToken(resp.access_token, resp.expires_in, scope);
+      // Persist token (scoped) so it survives reloads and we can assess expiry
+      if (!Number.isNaN(expiresIn) && expiresIn > 0) {
+        writeStoredToken(accessToken, expiresIn, scope);
       }
 
-      resolve(resp.access_token);
+      resolve(accessToken);
     };
 
-    // Silent-first strategy to avoid prompts on load.
-    // - If the caller explicitly asked for consent, prompt now.
-    // - If a token exists, refresh silently.
-    // - If no token exists, attempt a silent request first; if that fails, the
-    //   caller should re-invoke with `{ prompt: 'consent' }` during a user action.
-    if (opts.prompt !== 'consent') {
-      tokenClient.requestAccessToken({ prompt: '' });
-      return;
-    }
-
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    // Default: silent request that will refresh or mint a token without prompting.
+    // If consent is explicitly requested, show the consent screen.
+    const prompt = opts.prompt === 'consent' ? 'consent' : '';
+    tokenClient.requestAccessToken({ prompt });
   });
 };
