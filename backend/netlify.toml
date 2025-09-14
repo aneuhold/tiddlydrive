@@ -1,0 +1,24 @@
+[build]
+  command = "pnpm -C app build"
+  publish = "app/build"
+  functions = "backend/functions"
+
+[[headers]]
+  for = "/**"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+
+[[redirects]]
+  from = "/api/oauth/start"
+  to = "/.netlify/functions/oauth-start"
+  status = 200
+
+[[redirects]]
+  from = "/api/oauth/callback"
+  to = "/.netlify/functions/oauth-callback"
+  status = 200
+
+[[redirects]]
+  from = "/api/token"
+  to = "/.netlify/functions/token"
+  status = 200
