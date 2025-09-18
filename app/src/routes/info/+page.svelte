@@ -18,6 +18,7 @@
     <ul class="feature-list">
       <li>
         <strong>Minimal Scope:</strong> Uses only <code>drive.file</code> for the files you choose.
+        <sup>1</sup>
       </li>
       <li><strong>Client‑Side Only:</strong> No server stores your content.</li>
       <li><strong>Open Source:</strong> GNU licensed and community friendly.</li>
@@ -38,6 +39,11 @@
       <a data-sveltekit-preload-data="hover" href={resolve('/info/terms')}>Terms of Service</a>
     </div>
   </section>
+  <p class="scope-caveat">
+    <sup>1</sup> Additional scopes (<code>drive.install</code>,
+    <code>userinfo.email</code>, <code>userinfo.profile</code>) are required for Google Drive "Open
+    With" integration and marketplace publishing but are not used by the application.
+  </p>
 </main>
 
 <style>
@@ -70,6 +76,15 @@
     border-radius: 12px;
     box-shadow: 0 2px 4px var(--color-shadow-light);
     font-size: 0.95rem;
+  }
+  .scope-caveat {
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted, #666);
+    text-align: center;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
   }
   .actions {
     margin-top: 2.25rem;

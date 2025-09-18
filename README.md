@@ -15,7 +15,11 @@ Huge thanks to the original creator [LordRatte](https://github.com/LordRatte) fo
 3. **Start editing!** Your changes are automatically saved back to Google Drive
 4. **Customize settings** via the gear button
 
-> The app only requests minimal Google Drive permissions (drive.file scope) - it can only access files you explicitly choose to open with it.
+> The app requests the following Google Drive permissions:
+>
+> - `drive.file` - Core functionality to read and write files you explicitly choose to open
+> - `drive.install` - Required for the "Open With" option in Google Drive's context menu
+> - `userinfo.email` and `userinfo.profile` - Required for Google Workspace Marketplace publishing (data is not used by the app)
 
 ## ✨ Key Features
 
@@ -72,7 +76,10 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
 ### 🌐 Enterprise Features
 
 - Shared Drive support for team collaboration
-- Minimal permissions (drive.file scope only)
+- Minimal permissions with clear scope justifications:
+  - `drive.file` - Access only files you explicitly open
+  - `drive.install` - Enable Google Drive "Open With" integration
+  - `userinfo.email` and `userinfo.profile` - Required for marketplace publishing only
 - Offline fallback for network interruptions
 
 ## 🔧 Development

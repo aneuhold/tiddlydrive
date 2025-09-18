@@ -31,11 +31,22 @@
       <li>No account emails, contacts, or any other Drive files beyond the one you choose.</li>
     </ul>
     <h2>OAuth Scope Justification</h2>
-    <p>
-      The app requests only the <code>https://www.googleapis.com/auth/drive.file</code> scope so it can
-      read and update the specific file you pick. This does not grant broad read access to your entire
-      Drive.
-    </p>
+    <p>The app requests the following Google API scopes:</p>
+    <ul>
+      <li>
+        <code>https://www.googleapis.com/auth/drive.file</code> - Core functionality to read and update
+        the specific file you pick. This does not grant broad read access to your entire Drive.
+      </li>
+      <li>
+        <code>https://www.googleapis.com/auth/drive.install</code> - Required for the "Open With" option
+        to appear in Google Drive's context menu when you right-click files.
+      </li>
+      <li>
+        <code>https://www.googleapis.com/auth/userinfo.email</code> and
+        <code>https://www.googleapis.com/auth/userinfo.profile</code> - Required for Google Workspace
+        Marketplace publishing. This data is not used, stored, or accessed by the application.
+      </li>
+    </ul>
     <h2>Data Storage & Retention</h2>
     <p>
       No persistent storage outside your browser’s runtime is used. When you close the tab, the

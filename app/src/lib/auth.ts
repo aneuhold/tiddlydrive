@@ -1,5 +1,16 @@
 import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
 
+/*
+ * Google Drive API Scope Strategy:
+ * - drive.file: Core functionality - access only files user explicitly opens
+ * - drive.install: Required for "Open With" option in Google Drive context menu
+ * - userinfo.email & userinfo.profile: Required for Google Workspace Marketplace publishing
+ *   (these are not used by the app but required by Google's marketplace policies)
+ *
+ * In development, only drive.file is used by default. The broader 'drive' scope can be
+ * temporarily enabled via URL parameter for testing purposes.
+ */
+
 const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
 const WEB_API_KEY = 'AIzaSyBa2pekTr_FkdjYQlZDjHGuuxwNO6EY9Pg';

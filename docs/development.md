@@ -38,7 +38,13 @@ This project is a modernized Tiddly Drive app built with Svelte 5 and Vite. It i
 
 For testing or app review, you may need to use the broader `drive` scope (for example, to enable Google Drive's "Open with" flow before the app is fully verified). You can opt-in via a URL query parameter; no rebuild is required, and it works locally and in production.
 
-- Default scope: `drive.file` (least privilege)
+**Production scopes** (what users actually experience):
+- `drive.file` - Core functionality to read and write files you explicitly choose to open
+- `drive.install` - Required for the "Open With" option in Google Drive's context menu  
+- `userinfo.email` and `userinfo.profile` - Required for Google Workspace Marketplace publishing (data is not used by the app)
+
+**Development/testing scope override**:
+- Default scope: `drive.file` (least privilege for development)
 - Override via query param:
   - `?td_scope=drive` → uses `https://www.googleapis.com/auth/drive`
   - `?td_scope=drive.file` or omit param → uses `https://www.googleapis.com/auth/drive.file`
