@@ -20,7 +20,8 @@
         <strong>Minimal Scope:</strong> Uses only <code>drive.file</code> for the files you choose.
         <sup>1</sup>
       </li>
-      <li><strong>Client‑Side Only:</strong> No server stores your content.</li>
+      <li><strong>Client‑Side Processing:</strong> Your content never leaves your browser.</li>
+      <li><strong>Stateless Backend:</strong> Secure token refresh only - no data storage.</li>
       <li><strong>Open Source:</strong> GNU licensed and community friendly.</li>
     </ul>
   </section>

@@ -36,6 +36,7 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
 - Intelligent auto-save with conflict detection
 - Real-time sync with Google Drive
 - Version awareness prevents overwrites
+- Long-session support via secure token refresh (no server data storage)
 
 ### ⚙️ Customizable Settings
 

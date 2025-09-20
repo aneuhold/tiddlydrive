@@ -9,11 +9,26 @@
     <h1 class="header-4">Privacy Policy</h1>
     <p class="subtitle-1 muted">Last updated: {year}</p>
     <p>
-      <strong>Summary:</strong> Tiddly Drive 2 runs entirely in your browser. It never uploads, proxies,
-      or stores your TiddlyWiki content on any server operated by this project. The only remote services
-      contacted are Google APIs needed to open and save the file you explicitly select, plus optional
-      third‑party resources (fonts / icons) shown in the page head.
+      <strong>Summary:</strong> Tiddly Drive 2 runs entirely in your browser with a stateless backend
+      for token refresh only. It never uploads, proxies, or stores your TiddlyWiki content on any server
+      operated by this project. The backend exists solely to securely refresh your authentication tokens,
+      allowing indefinite sessions without popup interruptions. The only remote services contacted are
+      Google APIs needed to open and save the file you explicitly select, plus optional third‑party resources
+      (fonts / icons) shown in the page head.
     </p>
+    <h2>Stateless Backend for Authentication</h2>
+    <p>
+      Tiddly Drive 2 includes a minimal backend service that serves one purpose only: securely
+      refreshing your Google authentication tokens. This enables you to keep your TiddlyWiki open
+      indefinitely without authentication popup interruptions. The backend is completely stateless
+      and processes no user data:
+    </p>
+    <ul>
+      <li>No user content is transmitted to or stored on our servers</li>
+      <li>No session data, preferences, or personal information is retained</li>
+      <li>Only standard OAuth token refresh operations are performed</li>
+      <li>All requests are processed in real-time with no persistent storage</li>
+    </ul>
     <h2>Data We Access</h2>
     <ul>
       <li>
