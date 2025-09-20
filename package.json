@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.14.0",
   "description": "Modernized Tiddly Drive 2 Google Drive app integration",
   "scripts": {
-    "i": "pnpm install && cd ./app && pnpm install",
+    "i": "pnpm i && cd ./app && pnpm install",
     "build": "cd ./app && pnpm run build",
     "dev": "netlify dev",
     "dev:app": "cd ./app && pnpm run dev",
