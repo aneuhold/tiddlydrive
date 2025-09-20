@@ -6,9 +6,7 @@ on:
     branches:
       - main
 permissions:
-  pull-requests: write
   contents: read
-  deployments: write
 
 jobs:
   testAndDeploy:
@@ -41,83 +39,12 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Build the svelte site
-        run: pnpm build
-
       - name: Deploy to Netlify (CLI Preview)
         id: deploy
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: |
-          set -euo pipefail
-          JSON_OUTPUT=$(pnpm exec netlify deploy --build --message "${{ github.event.pull_request.title }} Deploy Preview" --json)
-          PREVIEW_URL=$(echo "$JSON_OUTPUT" | jq -r '.deploy_url // .url // empty')
-          if [ -n "$PREVIEW_URL" ]; then
-            echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
-            echo "Netlify Preview: $PREVIEW_URL" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Netlify deploy completed but no preview URL found in JSON output:" >> $GITHUB_STEP_SUMMARY
-            echo "$JSON_OUTPUT" >> $GITHUB_STEP_SUMMARY
-          fi
-        timeout-minutes: 15
+        run: pnpm exec netlify deploy --build --message "${{ github.event.pull_request.title }} Deploy Preview"
+        timeout-minutes: 2
 
-      - name: Comment preview URL on PR
-        if: ${{ steps.deploy.outputs.preview_url != '' }}
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: netlify-preview
-          message: |
-            Netlify Deploy Preview: ${{ steps.deploy.outputs.preview_url }}
-
-      - name: Create GitHub Deployment (start)
-        id: gh_deploy
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const res = await github.rest.repos.createDeployment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: context.sha,
-              environment: `Preview #${context.issue.number}`,
-              description: 'Netlify Deploy Preview',
-              auto_merge: false,
-              required_contexts: [],
-              transient_environment: true,
-              production_environment: false,
-            });
-            core.setOutput('deployment_id', res.data.id);
-
-      - name: Set Deployment Status (success)
-        if: ${{ steps.deploy.outputs.preview_url != '' }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: Number(process.env.DEPLOYMENT_ID),
-              state: 'success',
-              environment_url: process.env.DEPLOY_URL,
-              log_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              auto_inactive: true,
-            });
-        env:
-          DEPLOYMENT_ID: ${{ steps.gh_deploy.outputs.deployment_id }}
-          DEPLOY_URL: ${{ steps.deploy.outputs.preview_url }}
-
-      - name: Set Deployment Status (failure)
-        if: ${{ failure() }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: Number(process.env.DEPLOYMENT_ID),
-              state: 'error',
-              log_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-              auto_inactive: true,
-            });
-        env:
-          DEPLOYMENT_ID: ${{ steps.gh_deploy.outputs.deployment_id }}
+      # Preview URL is still captured in the step summary above; no PR comments or GitHub Deployment created.
