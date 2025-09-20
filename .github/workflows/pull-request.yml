@@ -1,4 +1,4 @@
-name: "Pull Request Actions"
+name: 'Pull Request Actions'
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   testAndDeploy:
-    name: "Test and Deploy"
+    name: 'Test and Deploy'
     runs-on: ubuntu-latest
 
     steps:
@@ -20,8 +20,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
-          cache: "pnpm"
+          node-version: 'lts/*'
+          cache: 'pnpm'
           cache-dependency-path: |
             pnpm-lock.yaml
             app/pnpm-lock.yaml
@@ -32,17 +32,20 @@ jobs:
       - name: Build the svelte site
         run: pnpm build
 
+      # Still specify the functions-dir and publish-dir, because we are building from source here.
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3.0
         with:
-          publish-dir: "./app/build"
+          publish-dir: './app/build'
+          functions-dir: './backend/functions'
           production-branch: main
+          netlify-config-path: './netlify.toml'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "${{ github.event.pull_request.title }} Deploy Preview"
+          deploy-message: '${{ github.event.pull_request.title }} Deploy Preview'
           enable-pull-request-comment: false
           enable-commit-comment: false
           overwrites-pull-request-comment: false
-          github-deployment-description: "Netlify Deploy Preview"
+          github-deployment-description: 'Netlify Deploy Preview'
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

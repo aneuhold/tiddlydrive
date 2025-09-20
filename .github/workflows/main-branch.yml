@@ -1,4 +1,4 @@
-name: "Main Branch Actions"
+name: 'Main Branch Actions'
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   deploy:
-    name: "Deploy"
+    name: 'Deploy'
     runs-on: ubuntu-latest
 
     steps:
@@ -20,8 +20,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
-          cache: "pnpm"
+          node-version: 'lts/*'
+          cache: 'pnpm'
           cache-dependency-path: |
             pnpm-lock.yaml
             app/pnpm-lock.yaml
@@ -35,15 +35,17 @@ jobs:
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3.0
         with:
-          publish-dir: "./app/build"
+          publish-dir: './app/build'
+          functions-dir: './backend/functions'
           production-branch: main
           production-deploy: true
+          netlify-config-path: './netlify.toml'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "Main Branch Deploy"
+          deploy-message: 'Main Branch Deploy'
           enable-pull-request-comment: false
           enable-commit-comment: false
           overwrites-pull-request-comment: false
-          github-deployment-description: "Netlify Deploy"
+          github-deployment-description: 'Netlify Deploy'
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
