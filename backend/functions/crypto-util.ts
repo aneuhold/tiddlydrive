@@ -1,24 +1,24 @@
 // Small AES-GCM crypto utility for encrypting/decrypting refresh tokens into a stateless cookie.
-// Uses a single symmetric key provided via env var TD2_ENC_KEY_B64 (32-byte key, base64).
+// Uses a single symmetric key provided via env var TD2_ENC_KEY_B64 (32-byte key, base64url or base64).
 // This keeps the backend storage-free while maintaining confidentiality and integrity.
+
+import crypto from 'node:crypto';
 
 /**
  * Encodes a Buffer into base64url without padding.
- * @param {Buffer} buf
+ *
+ * @param buf
  */
-function b64urlEncode(buf) {
-  return buf
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
+export function b64urlEncode(buf: Buffer): string {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 /**
  * Decodes a base64url string into a Buffer.
- * @param {string} str
+ *
+ * @param str
  */
-function b64urlDecode(str) {
+export function b64urlDecode(str: string): Buffer {
   const pad = str.length % 4 === 2 ? '==' : str.length % 4 === 3 ? '=' : '';
   const b64 = str.replace(/-/g, '+').replace(/_/g, '/') + pad;
   return Buffer.from(b64, 'base64');
@@ -26,10 +26,9 @@ function b64urlDecode(str) {
 
 /**
  * Loads and validates the AES key from env var TD2_ENC_KEY_B64 (32 bytes when decoded).
- * @returns {Buffer}
  */
-function loadKey() {
-  const b64 = process.env.TD2_ENC_KEY_B64 || '';
+function loadKey(): Buffer {
+  const b64 = process.env['TD2_ENC_KEY_B64'] || '';
   if (!b64) throw new Error('Missing TD2_ENC_KEY_B64 environment variable');
   const key = b64urlDecode(b64);
   if (key.length !== 32) throw new Error('TD2_ENC_KEY_B64 must decode to 32 bytes');
@@ -38,16 +37,14 @@ function loadKey() {
 
 /**
  * Encrypts plaintext using AES-256-GCM. Returns a compact base64url string: "v1.iv.ciphertext.tag".
- *- v: version for future key rotation support
- *- iv: 12-byte random IV
- *- ciphertext, tag: from AES-GCM
+ * - v: version for future key rotation support
+ * - iv: 12-byte random IV
+ * - ciphertext, tag: from AES-GCM
  *
- * @param {Buffer} plaintext
- * @param {Buffer} [aad] Additional authenticated data (optional)
- * @returns {string}
+ * @param plaintext
+ * @param aad
  */
-function encrypt(plaintext, aad) {
-  const crypto = require('crypto');
+export function encrypt(plaintext: Buffer, aad?: Buffer): string {
   const key = loadKey();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
@@ -60,12 +57,11 @@ function encrypt(plaintext, aad) {
 
 /**
  * Decrypts a base64url compact string produced by encrypt().
- * @param {string} tokenEnc
- * @param {Buffer} [aad]
- * @returns {Buffer}
+ *
+ * @param tokenEnc
+ * @param aad
  */
-function decrypt(tokenEnc, aad) {
-  const crypto = require('crypto');
+export function decrypt(tokenEnc: string, aad?: Buffer): Buffer {
   const key = loadKey();
   const parts = tokenEnc.split('.');
   if (parts.length !== 4) throw new Error('Malformed encrypted token');
@@ -81,10 +77,3 @@ function decrypt(tokenEnc, aad) {
   const out = Buffer.concat([decipher.update(ct), decipher.final()]);
   return out;
 }
-
-module.exports = {
-  b64urlEncode,
-  b64urlDecode,
-  encrypt,
-  decrypt
-};
