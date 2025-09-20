@@ -1,7 +1,16 @@
 [build]
-  command = "pnpm -C app build"
+  command = "pnpm build"
   publish = "app/build"
   functions = "backend/functions"
+
+# This will make it so that everything serves on 4317 and proxies to the SvelteKit dev server on :4320
+[dev]
+  command = "pnpm dev:app"
+  framework = "#custom"
+  port = 4317
+  targetPort = 4320
+  # Determines if the web page opens automatically in the browser when it starts up
+  autoLaunch = true
 
 [[headers]]
   for = "/**"
@@ -21,4 +30,9 @@
 [[redirects]]
   from = "/api/token"
   to = "/.netlify/functions/token"
+  status = 200
+
+[[redirects]]
+  from = "/api/logout"
+  to = "/.netlify/functions/logout"
   status = 200

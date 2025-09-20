@@ -4,6 +4,7 @@
 - Make edits directly in files unless asked to create new ones
 - Avoid code duplication; reuse existing code when possible
 - Svelte 5 for frontend
+- Backend used purely for handling refresh tokens, that way the user doesn't need to see a popup every hour to re-authenticate
 
 ## Code Style
 

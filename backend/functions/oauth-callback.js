@@ -1,7 +1,10 @@
-// Exchanges authorization code for tokens and stores refresh token in Netlify Blobs.
-// Sets a session cookie with a session id, then closes the popup.
+// Exchanges authorization code for tokens and writes the refresh token into an encrypted HttpOnly cookie.
+// Stateless approach: no database/KV/Blobs used. A single symmetric key protects the cookie value.
+// Also validates the OAuth `state` against the short-lived cookie to mitigate CSRF.
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const { encrypt } = require('./crypto-util');
+const crypto = require('crypto');
 
 async function exchangeCodeForTokens(code, clientId, clientSecret, redirectUri, codeVerifier) {
   const body = new URLSearchParams();
@@ -24,19 +27,6 @@ async function exchangeCodeForTokens(code, clientId, clientSecret, redirectUri, 
   return resp.json();
 }
 
-async function storeRefreshToken(sessionId, refreshToken) {
-  try {
-    const { getStore } = require('@netlify/blobs');
-    const store = getStore('td2-sessions');
-    await store.set(sessionId, refreshToken);
-    return;
-  } catch (_e) {
-    // Fallback: in-memory (for local dev only)
-    globalThis.__TD2_SESS__ = globalThis.__TD2_SESS__ || new Map();
-    globalThis.__TD2_SESS__.set(sessionId, refreshToken);
-  }
-}
-
 exports.handler = async (event) => {
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -44,6 +34,7 @@ exports.handler = async (event) => {
     const redirectUri = process.env.OAUTH_REDIRECT_URI;
 
     const code = event.queryStringParameters.code;
+    const state = event.queryStringParameters.state;
     if (!code) {
       return { statusCode: 400, body: 'Missing code' };
     }
@@ -51,10 +42,22 @@ exports.handler = async (event) => {
       return { statusCode: 500, body: 'Server misconfiguration' };
     }
 
-    // Retrieve PKCE verifier from cookie
-  const cookieHeader = event.headers.cookie || '';
-  const m = /(?:^|;\s*)td2_pkce=([^;]+)/.exec(cookieHeader);
-    const codeVerifier = m ? decodeURIComponent(m[1]) : undefined;
+    // Retrieve PKCE verifier and state from cookie
+    const cookieHeader = event.headers.cookie || '';
+    const m = /(?:^|;\s*)td2_oauth=([^;]+)/.exec(cookieHeader);
+    const cookiePayload = m ? decodeURIComponent(m[1]) : '';
+    let codeVerifier;
+    let stateCookie;
+    try {
+      const obj = JSON.parse(cookiePayload || '{}');
+      codeVerifier = obj.v;
+      stateCookie = obj.s;
+    } catch {
+      /* ignore */
+    }
+    if (!codeVerifier || !state || state !== stateCookie) {
+      return { statusCode: 400, body: 'Invalid or missing PKCE/state' };
+    }
 
     const tokenData = await exchangeCodeForTokens(
       code,
@@ -68,16 +71,18 @@ exports.handler = async (event) => {
       return { statusCode: 400, body: 'No refresh_token received (consent may be required)' };
     }
 
-    // Create a simple session id and store the refresh token
-    const sessionId = crypto.randomUUID();
-    await storeRefreshToken(sessionId, refreshToken);
-
-  const sessionCookie = `td2_sid=${sessionId}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`; // 30 days
+    // Encrypt refresh token into stateless cookie; AAD binds it to purpose and minimal context
+    const aad = Buffer.from('td2_refresh_v1', 'utf8');
+    const enc = encrypt(Buffer.from(refreshToken, 'utf8'), aad);
+    // 30 days, Strict, scoped to /api/
+    const rtCookie = `td2_rt=${enc}; Path=/api/; Secure; HttpOnly; SameSite=Strict; Max-Age=${60 * 60 * 24 * 30}`;
+    // Clear the oauth helper cookie
+    const clearOauthCookie = `td2_oauth=; Path=/api/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`;
 
     const html = `<!doctype html><html><body><script>window.close();</script>OK</body></html>`;
     return {
       statusCode: 200,
-  headers: { 'Set-Cookie': sessionCookie, 'Content-Type': 'text/html' },
+      headers: { 'Set-Cookie': [rtCookie, clearOauthCookie], 'Content-Type': 'text/html' },
       body: html
     };
   } catch (e) {

@@ -8,7 +8,8 @@
   "scripts": {
     "i": "pnpm install && cd ./app && pnpm install",
     "build": "cd ./app && pnpm run build",
-    "dev": "pnpm --dir app dev",
+    "dev": "netlify dev",
+    "dev:app": "cd ./app && pnpm run dev",
     "preview": "cd ./app && pnpm run preview",
     "icons:clean": "rm -rf branding/png && mkdir -p branding/png",
     "icons:single": "rsvg-convert -w $WIDTH -h $WIDTH branding/logo-icon.svg > branding/png/icon-$WIDTH.png",
@@ -21,6 +22,7 @@
     "@aneuhold/eslint-config": "^1.3.3",
     "concurrently": "^8.2.2",
     "dotenv": "^16.4.5",
-    "esbuild": "^0.21.5"
+    "esbuild": "^0.21.5",
+    "netlify-cli": "^23.6.0"
   }
 }
