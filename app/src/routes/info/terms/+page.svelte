@@ -12,7 +12,7 @@
     <p>By using Tiddly Drive 2 you agree to these Terms. If you do not agree, discontinue use.</p>
     <h2>License</h2>
     <p>
-      This project is open source under the MIT License. You may study, modify, and redistribute the
+      This project is open source under the GNU License. You may study, modify, and redistribute the
       code in accordance with that license.
     </p>
     <h2>Appropriate Use</h2>

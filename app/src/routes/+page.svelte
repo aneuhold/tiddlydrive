@@ -63,7 +63,6 @@
 
 <svelte:head>
   <title>Tiddly Drive 2 – App</title>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </svelte:head>
 
 <main class="app-shell" class:hasfile={status === 'ready'}>
@@ -114,14 +113,14 @@
   .app-shell {
     margin: 0;
     padding: 0;
-    height: 100%;
   }
   .app-shell {
     font-family: system-ui, sans-serif;
-    background: #111;
     color: #222;
+    display: flex;
+    flex-direction: column;
     min-height: 100vh;
-    position: relative;
+    background-color: #e0e0e0;
   }
   .frame-wrapper {
     position: relative;

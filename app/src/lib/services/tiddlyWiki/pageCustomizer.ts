@@ -51,23 +51,51 @@ class PageCustomizer {
     if (!raw) return;
     const mime = tiddler.fields.type || 'image/x-icon';
     const dataUrl = `data:${mime};base64,${raw}`;
-
-    // Remove previous overrides we control
+    // First, restore any previous overrides we made, then re-apply fresh
+    // (handles MIME/type changes and ensures we don't stack stateful changes)
     this.removeWikiFaviconOverride(doc);
 
-    const ensureIdLink = (id: string, rel: string): void => {
-      let link = doc.getElementById(id) as HTMLLinkElement | null;
-      if (!link) {
-        link = doc.createElement('link');
-        link.id = id;
-        link.rel = rel;
-        doc.head.appendChild(link);
-      }
-      link.href = dataUrl;
-    };
+    // We own the HTML and guarantee IDs exist. Update them directly.
+    const targets = this.getFaviconElements(doc);
 
-    ensureIdLink('td2-wiki-favicon', 'icon');
-    ensureIdLink('td2-wiki-favicon-shortcut', 'shortcut icon');
+    for (const el of targets) {
+      const tag = el.tagName.toLowerCase();
+      if (tag === 'link') {
+        const link = el as HTMLLinkElement;
+        if (!link.dataset.td2FaviconOrigHref) {
+          const orig = link.getAttribute('href') || '';
+          link.dataset.td2FaviconOrigHref = orig;
+        }
+        link.dataset.td2FaviconOverridden = '1';
+        link.setAttribute('type', mime);
+        link.href = dataUrl;
+      } else if (tag === 'meta') {
+        const meta = el as HTMLMetaElement;
+        if (!meta.dataset.td2FaviconOrigContent) {
+          const orig = meta.getAttribute('content') || '';
+          meta.dataset.td2FaviconOrigContent = orig;
+        }
+        meta.dataset.td2FaviconOverridden = '1';
+        meta.setAttribute('content', dataUrl);
+      }
+    }
+  };
+
+  /**
+   * Returns the favicon link elements we own in the base HTML.
+   * The IDs are guaranteed by `app/src/app.html` which we control.
+   *
+   * @param doc The target document to query
+   * @returns Array of link elements to override (favicon + apple-touch)
+   */
+  private getFaviconElements = (doc: Document): (HTMLLinkElement | HTMLMetaElement)[] => {
+    const favicon = doc.getElementById('td2-app-favicon') as HTMLLinkElement | null;
+    const appleTouch = doc.getElementById('td2-app-apple-touch-icon') as HTMLLinkElement | null;
+    const ogImage = doc.getElementById('td2-app-og-image') as HTMLMetaElement | null;
+    const twitterImage = doc.getElementById('td2-app-twitter-image') as HTMLMetaElement | null;
+    return [favicon, appleTouch, ogImage, twitterImage].filter(Boolean) as Array<
+      HTMLLinkElement | HTMLMetaElement
+    >;
   };
 
   /**
@@ -112,10 +140,32 @@ class PageCustomizer {
    *
    * @param doc The document to clean up
    */
-  removeWikiFaviconOverride = (doc: Document = document): void => {
+  private removeWikiFaviconOverride = (doc: Document = document): void => {
     try {
-      doc.getElementById('td2-wiki-favicon')?.remove();
-      doc.getElementById('td2-wiki-favicon-shortcut')?.remove();
+      // Revert the two known ID targets only (we own the HTML)
+      const targets = this.getFaviconElements(doc);
+
+      for (const el of targets) {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'link') {
+          const link = el as HTMLLinkElement;
+          const orig = link.dataset.td2FaviconOrigHref;
+          if (typeof orig === 'string') {
+            link.href = orig;
+          }
+          delete link.dataset.td2FaviconOrigHref;
+          delete link.dataset.td2FaviconOverridden;
+          link.removeAttribute('type');
+        } else if (tag === 'meta') {
+          const meta = el as HTMLMetaElement;
+          const orig = meta.dataset.td2FaviconOrigContent;
+          if (typeof orig === 'string') {
+            meta.setAttribute('content', orig);
+          }
+          delete meta.dataset.td2FaviconOrigContent;
+          delete meta.dataset.td2FaviconOverridden;
+        }
+      }
     } catch (_err) {
       // Ignore cleanup failures
     }
