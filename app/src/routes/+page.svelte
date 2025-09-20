@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { getAccessToken, initAuth } from '$lib/auth';
+  import { initAuth, reauthenticateWithConsent } from '$lib/auth';
   import { prefsStore } from '$lib/prefs';
   import googleDriveService from '$lib/services/googleDriveService';
 
@@ -21,7 +21,7 @@
   const forceAuthenticate = async (): Promise<void> => {
     try {
       // Force a fresh authentication with consent prompt
-      await getAccessToken({ prompt: 'consent' });
+      await reauthenticateWithConsent();
       showToast('Re-authenticated successfully');
     } catch (error) {
       console.error('Force authentication failed:', error);

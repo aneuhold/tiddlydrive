@@ -1,5 +1,3 @@
-// No GIS token client types are imported because token minting is handled by the backend.
-
 /*
  * Google Drive API Scope Strategy:
  * - drive.file: Core functionality - access only files user explicitly opens
@@ -11,15 +9,31 @@
  * temporarily enabled via URL parameter for testing purposes.
  */
 
-const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+/** Scope URLs used by the application */
+const DRIVE_SCOPE_URL = 'https://www.googleapis.com/auth/drive';
+const DRIVE_FILE_SCOPE_URL = 'https://www.googleapis.com/auth/drive.file';
+
+/** Default scope requested by the application */
+const DEFAULT_SCOPE = DRIVE_FILE_SCOPE_URL;
+
+/** Google API Web key (safe to expose on the client for discovery) */
 const WEB_API_KEY = 'AIzaSyBa2pekTr_FkdjYQlZDjHGuuxwNO6EY9Pg';
+
+/** URL query parameter controlling requested scope override */
 const SCOPE_QUERY_PARAM = 'td_scope';
+
+/** Poll interval while waiting for gapi to appear */
+const GAPI_POLL_INTERVAL_MS = 50;
+
+/** Early-expire skew to account for clock drift (in seconds) */
+const TOKEN_SKEW_SEC = 60;
 
 // Discovery doc URL for APIs used by the app
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 
 const TOKEN_STORAGE_KEY = 'td2_gapi_token';
 
+/** Persisted token entry in localStorage */
 type StoredToken = {
   access_token: string;
   /** epoch millis */
@@ -27,8 +41,53 @@ type StoredToken = {
   scope: string;
 };
 
+/** Response payload from the backend token endpoint */
+type AccessTokenResponse = {
+  access_token: string;
+  expires_in: number;
+  scope?: string;
+};
+
+/**
+ * Error codes thrown by the auth helpers.
+ */
+export enum AuthErrorCode {
+  NoSession = 'no_session',
+  TokenFailed = 'token_failed',
+  ScopeNotGranted = 'scope_not_granted',
+  GapiUnavailable = 'gapi_unavailable',
+  SsrUnavailable = 'ssr_unavailable'
+}
+
+/**
+ * Custom error type for authentication-related failures.
+ */
+export class AuthError extends Error {
+  code: AuthErrorCode;
+  status?: number;
+
+  /**
+   * @param code A machine-readable error code
+   * @param message A human-readable message; if omitted, a default is derived from the code
+   * @param status Optional HTTP status associated with the error
+   */
+  constructor(code: AuthErrorCode, message?: string, status?: number) {
+    super(message ?? code);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/**
+ * Returns true if running in a browser (not SSR).
+ *
+ * @returns Whether code is executing on the client
+ */
+const isClient = (): boolean => typeof window !== 'undefined' && typeof document !== 'undefined';
+
 const readStoredToken = (scope: string): StoredToken | null => {
   try {
+    if (!isClient()) return null;
     const raw = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw) as StoredToken | null;
@@ -49,8 +108,8 @@ const readStoredToken = (scope: string): StoredToken | null => {
 
 const writeStoredToken = (token: string, expiresInSec: number, scope: string): void => {
   try {
-    const skew = 60; // seconds early expiration to account for clock skew
-    const expire_at = Date.now() + Math.max(0, (expiresInSec - skew) * 1000);
+    if (!isClient()) return;
+    const expire_at = Date.now() + Math.max(0, (expiresInSec - TOKEN_SKEW_SEC) * 1000);
     const payload: StoredToken = { access_token: token, expire_at, scope };
     localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(payload));
   } catch {
@@ -61,10 +120,14 @@ const writeStoredToken = (token: string, expiresInSec: number, scope: string): v
 /**
  * Waits for Google API client to be available on window.
  *
- * @returns Promise that resolves when gapi is available
+ * @returns Promise that resolves when gapi is present on window
  */
 const waitForGapi = async (): Promise<void> =>
-  new Promise((resolve) => {
+  new Promise((resolve, reject) => {
+    if (!isClient()) {
+      reject(new AuthError(AuthErrorCode.SsrUnavailable));
+      return;
+    }
     if (window.gapi) {
       resolve();
       return;
@@ -74,23 +137,22 @@ const waitForGapi = async (): Promise<void> =>
         clearInterval(iv);
         resolve();
       }
-    }, 50);
+    }, GAPI_POLL_INTERVAL_MS);
   });
 
-// GIS popup flows are not used—tokens come from the backend via refresh token cookie.
-
 /**
- * Resolve effective scope from URL param. Only 'drive' is allowed as an override.
+ * Resolve effective scope from URL param. Only 'drive' or 'drive.file' are allowed as an override.
  * Anything else falls back to default 'drive.file'.
  *
- * @returns Full scope URL when present in URL, otherwise default scope
+ * @returns Full scope URL to request
  */
 const determineScope = (): string => {
   try {
+    if (!isClient()) return DEFAULT_SCOPE;
     const params = new URLSearchParams(location.search);
     const raw = params.get(SCOPE_QUERY_PARAM)?.trim();
-    if (raw === 'drive') return 'https://www.googleapis.com/auth/drive';
-    if (raw === 'drive.file') return 'https://www.googleapis.com/auth/drive.file';
+    if (raw === 'drive') return DRIVE_SCOPE_URL;
+    if (raw === 'drive.file') return DRIVE_FILE_SCOPE_URL;
   } catch {
     /* ignore */
   }
@@ -105,7 +167,7 @@ const initializeGapiClient = async (): Promise<void> => {
   await waitForGapi();
   const gapiObj = window.gapi;
   if (!gapiObj) {
-    throw new Error('Google API not available');
+    throw new AuthError(AuthErrorCode.GapiUnavailable);
   }
 
   // Ensure the 'client' module is loaded
@@ -122,32 +184,48 @@ const initializeGapiClient = async (): Promise<void> => {
 };
 
 /**
- * Initializes the Google Identity Services token client.
- */
-// No GIS token client needed; tokens are minted via backend using refresh token cookie.
-
-/**
- * Initializes both Google API client and Google Identity Services.
+ * Initializes Google API client and discovery docs. Must be called on the client.
  */
 export const initAuth = async (): Promise<void> => {
+  if (!isClient()) throw new AuthError(AuthErrorCode.SsrUnavailable);
   await initializeGapiClient();
 };
 
 /**
- * Retrieves a valid access token using Google's recommended pattern.
+ * Sets the current access token into the gapi client.
  *
- * Behavior:
- * - Defaults to a silent attempt (prompt: '') without showing consent.
- * - If a token already exists in gapi, refreshes it silently.
- * - Only shows the consent screen when explicitly requested with `{ prompt: 'consent' }`.
- *
- * This avoids interactive prompts on page load; call with `{ prompt: 'consent' }` in
- * response to a user gesture (e.g., a button click) to establish a new session.
- *
- * @param opts Optional controls for interactive prompts
- * @param opts.prompt When set to 'consent', forces the Google consent screen
- * @returns Promise resolving to a valid OAuth access token string
+ * @param token OAuth access token string
  */
+const setGapiAccessToken = (token: string): void => {
+  const gapiClient = window.gapi?.client;
+  if (!gapiClient) throw new AuthError(AuthErrorCode.GapiUnavailable);
+  gapiClient.setToken({ access_token: token });
+};
+
+/**
+ * Builds the OAuth start URL, optionally honoring a scope override.
+ *
+ * @param override Optional override value for the `td_scope` query parameter
+ * @returns The OAuth start URL (relative)
+ */
+const buildOauthStartUrl = (override: string | null | undefined): string =>
+  override
+    ? `/api/oauth/start?${SCOPE_QUERY_PARAM}=${encodeURIComponent(override)}`
+    : '/api/oauth/start';
+
+/**
+ * Derives a scope override short value ("drive" or "drive.file") from a full desired scope URL.
+ * Returns null if the scope is neither of those two.
+ *
+ * @param desiredScope Full scope URL the app wants
+ * @returns The short override value or null if not applicable
+ */
+const scopeOverrideFromDesired = (desiredScope: string): string | null => {
+  if (desiredScope.endsWith('/drive')) return 'drive';
+  if (desiredScope.endsWith('/drive.file')) return 'drive.file';
+  return null;
+};
+
 /**
  * Retrieves a valid access token via the backend.
  * Strategy:
@@ -156,77 +234,151 @@ export const initAuth = async (): Promise<void> => {
  *   and, once closed, retry `/api/token`.
  * - On success, write token to gapi.client and local cache.
  *
+ * Normal path reuses cached token when valid; no consent is forced.
+ *
  * @returns Promise that resolves to an OAuth access token string
  */
 export const getAccessToken = async (): Promise<string> => {
+  if (!isClient()) throw new AuthError(AuthErrorCode.SsrUnavailable);
   if (!window.gapi?.client) await initAuth();
 
-  const scope = determineScope();
+  const desiredScope = determineScope();
 
-  const stored = readStoredToken(scope);
+  // 1) Use cached token if valid
+  const stored = readStoredToken(desiredScope);
   if (stored) {
-    const gapiClient = window.gapi?.client;
-    if (!gapiClient) throw new Error('Google API client not available');
-    gapiClient.setToken({ access_token: stored.access_token });
+    setGapiAccessToken(stored.access_token);
     return stored.access_token;
   }
 
-  const mint = async (): Promise<{ access_token: string; expires_in: number }> => {
-    const resp = await fetch('/api/token', { credentials: 'include', method: 'GET' });
-    if (resp.status === 401) throw new Error('no_session');
-    if (!resp.ok) throw new Error(`token_failed:${resp.status}`);
-    return resp.json();
-  };
+  // 2) Obtain an authorized token that satisfies the desired scope (consents as needed)
+  const finalToken = await obtainAuthorizedToken(desiredScope);
 
+  // 3) Apply and persist token
+  applyAndPersistToken(finalToken, desiredScope);
+  return finalToken.access_token;
+};
+
+/**
+ * Forces a consent flow and mints a fresh token, replacing any cached token.
+ *
+ * @returns Promise that resolves to a new OAuth access token string
+ */
+export const reauthenticateWithConsent = async (): Promise<string> => {
+  if (!isClient()) throw new AuthError(AuthErrorCode.SsrUnavailable);
+  if (!window.gapi?.client) await initAuth();
+  const desiredScope = determineScope();
+  clearStoredToken();
+  const token = await obtainAuthorizedToken(desiredScope, { forceConsentFirst: true });
+  applyAndPersistToken(token, desiredScope);
+  return token.access_token;
+};
+
+/**
+ * Clears any stored token cache in localStorage.
+ */
+const clearStoredToken = (): void => {
   try {
-    const data = (await mint()) as { access_token: string; expires_in: number; scope?: string };
-    // If the access token scope does not satisfy the desired scope, force re-consent with override
-    if (!isScopeSatisfied(data.scope, scope)) {
-      const pageParams = new URLSearchParams(location.search);
-      const override =
-        pageParams.get(SCOPE_QUERY_PARAM) ||
-        (scope.endsWith('/drive') ? 'drive' : scope.endsWith('/drive.file') ? 'drive.file' : null);
-      const startUrl = override
-        ? `/api/oauth/start?${SCOPE_QUERY_PARAM}=${encodeURIComponent(override)}`
-        : '/api/oauth/start';
-      await openAuthPopupAndWait(startUrl);
-      const data2 = (await mint()) as { access_token: string; expires_in: number; scope?: string };
-      if (!isScopeSatisfied(data2.scope, scope)) {
-        throw new Error('scope_not_granted');
-      }
-      const gapiClient2 = window.gapi?.client;
-      if (!gapiClient2) throw new Error('Google API client not available');
-      gapiClient2.setToken({ access_token: data2.access_token });
-      writeStoredToken(data2.access_token, data2.expires_in, scope);
-      return data2.access_token;
+    if (!isClient()) return;
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
+/**
+ * Reads the current page's scope override parameter if present.
+ *
+ * @returns The `td_scope` override value (e.g., "drive" or "drive.file") or null
+ */
+const getPageScopeOverrideParam = (): string | null =>
+  isClient() ? new URLSearchParams(location.search).get(SCOPE_QUERY_PARAM) : null;
+
+/**
+ * Opens consent flow (optionally with a scope override) and then calls the token mint function.
+ *
+ * @param override Optional override value for the `td_scope` parameter
+ * @returns Token response after consent
+ */
+const consentAndMint = async (override: string | null): Promise<AccessTokenResponse> => {
+  const startUrl = buildOauthStartUrl(override ?? undefined);
+  await openAuthPopupAndWait(startUrl);
+  return mintToken();
+};
+
+/**
+ * Ensures a token exists and satisfies the desired scope. If not, triggers consent and retries.
+ * Handles both "no session" and "insufficient scope" cases.
+ *
+ * Behavior preservation:
+ * - On insufficient scope: try page override OR fallback to derived override from desired scope
+ * - On no session: only try page override (no fallback)
+ *
+ * @param desiredScope Full scope URL the app wants
+ * @param opts Optional flags to control the authorization flow
+ * @param opts.forceConsentFirst When true, triggers consent before the first mint attempt
+ * @returns Token response satisfying the desired scope
+ */
+const obtainAuthorizedToken = async (
+  desiredScope: string,
+  opts?: { forceConsentFirst?: boolean }
+): Promise<AccessTokenResponse> => {
+  try {
+    // Optionally perform consent before first mint attempt
+    if (opts?.forceConsentFirst) {
+      const override = getPageScopeOverrideParam() || scopeOverrideFromDesired(desiredScope);
+      const firstAfterConsent = await consentAndMint(override);
+      if (isScopeSatisfied(firstAfterConsent.scope, desiredScope)) return firstAfterConsent;
+      // If consented but still insufficient, attempt one more consent with override (same behavior below)
     }
-    const gapiClient = window.gapi?.client;
-    if (!gapiClient) throw new Error('Google API client not available');
-    gapiClient.setToken({ access_token: data.access_token });
-    writeStoredToken(data.access_token, data.expires_in, scope);
-    return data.access_token;
+
+    const first = await mintToken();
+    if (isScopeSatisfied(first.scope, desiredScope)) return first;
+
+    // Insufficient scope: try consent with override from page or derived from desired scope
+    const override = getPageScopeOverrideParam() || scopeOverrideFromDesired(desiredScope);
+    const second = await consentAndMint(override);
+    if (!isScopeSatisfied(second.scope, desiredScope)) {
+      throw new AuthError(AuthErrorCode.ScopeNotGranted);
+    }
+    return second;
   } catch (e) {
-    if (e instanceof Error && e.message === 'no_session') {
-      // Open OAuth start in a popup and wait for it to close
-      const pageParams = new URLSearchParams(location.search);
-      const override = pageParams.get(SCOPE_QUERY_PARAM);
-      const startUrl = override
-        ? `/api/oauth/start?${SCOPE_QUERY_PARAM}=${encodeURIComponent(override)}`
-        : '/api/oauth/start';
-      await openAuthPopupAndWait(startUrl);
-      const data = (await mint()) as { access_token: string; expires_in: number; scope?: string };
-      if (!isScopeSatisfied(data.scope, scope)) {
-        // If still not satisfied after consent (e.g., user denied broader scope), surface a clear error
-        throw new Error('scope_not_granted');
+    if (e instanceof AuthError && e.code === AuthErrorCode.NoSession) {
+      // No session: consent using only the page override (no fallback)
+      const override = getPageScopeOverrideParam();
+      const afterConsent = await consentAndMint(override);
+      if (!isScopeSatisfied(afterConsent.scope, desiredScope)) {
+        throw new AuthError(AuthErrorCode.ScopeNotGranted);
       }
-      const gapiClient = window.gapi?.client;
-      if (!gapiClient) throw new Error('Google API client not available');
-      gapiClient.setToken({ access_token: data.access_token });
-      writeStoredToken(data.access_token, data.expires_in, scope);
-      return data.access_token;
+      return afterConsent;
     }
     throw e;
   }
+};
+
+/**
+ * Applies the token to gapi and persists it in localStorage.
+ *
+ * @param token Access token response from backend
+ * @param desiredScope Desired scope to associate with the persisted token
+ */
+const applyAndPersistToken = (token: AccessTokenResponse, desiredScope: string): void => {
+  setGapiAccessToken(token.access_token);
+  writeStoredToken(token.access_token, token.expires_in, desiredScope);
+};
+
+/**
+ * Calls the backend to mint/return the current access token.
+ *
+ * @returns The access token response from the backend
+ */
+const mintToken = async (): Promise<AccessTokenResponse> => {
+  const resp = await fetch('/api/token', { credentials: 'include', method: 'GET' });
+  if (resp.status === 401) throw new AuthError(AuthErrorCode.NoSession, undefined, 401);
+  if (!resp.ok) {
+    throw new AuthError(AuthErrorCode.TokenFailed, undefined, resp.status);
+  }
+  return (await resp.json()) as AccessTokenResponse;
 };
 
 /**
@@ -243,10 +395,9 @@ export const getAccessToken = async (): Promise<string> => {
 function isScopeSatisfied(grantedScopes: string | undefined, desiredScope: string): boolean {
   if (!grantedScopes) return false;
   const list = grantedScopes.split(/\s+/).filter(Boolean);
-  const DRIVE = 'https://www.googleapis.com/auth/drive';
-  const DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file';
-  if (desiredScope === DRIVE) return list.includes(DRIVE);
-  if (desiredScope === DRIVE_FILE) return list.includes(DRIVE) || list.includes(DRIVE_FILE);
+  if (desiredScope === DRIVE_SCOPE_URL) return list.includes(DRIVE_SCOPE_URL);
+  if (desiredScope === DRIVE_FILE_SCOPE_URL)
+    return list.includes(DRIVE_SCOPE_URL) || list.includes(DRIVE_FILE_SCOPE_URL);
   // Fallback: exact match
   return list.includes(desiredScope);
 }
@@ -255,7 +406,7 @@ function isScopeSatisfied(grantedScopes: string | undefined, desiredScope: strin
  * Opens a small centered popup to the given URL and resolves when the window closes.
  *
  * @param url Absolute or relative URL to open in the popup
- * @returns Promise that resolves when the popup window is closed
+ * @returns Promise that resolves when the popup is closed (or navigation fallback occurs)
  */
 const openAuthPopupAndWait = async (url: string): Promise<void> =>
   new Promise((resolve) => {
