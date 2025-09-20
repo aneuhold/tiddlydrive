@@ -43,12 +43,6 @@ export const pushToast = (message: string, kind: ToastKind = 'info', timeout = 2
 };
 
 /**
- * Sets a UI error to be displayed by the host component.
- *
- * @param title Title text
- * @param body Body text
- */
-/**
  * Sets a UI error to be displayed by the host component, with an optional action button.
  *
  * @param title Title text

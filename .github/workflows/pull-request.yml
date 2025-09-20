@@ -1,15 +1,22 @@
-name: "Pull Request Actions"
+name: 'Pull Request Actions'
 
 on:
   pull_request:
     # Only initiate the workflow when a PR is opened, or committed to.
     branches:
       - main
+permissions:
+  contents: read
 
 jobs:
   testAndDeploy:
-    name: "Test and Deploy"
+    name: 'Test and Deploy'
     runs-on: ubuntu-latest
+    env:
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      OAUTH_REDIRECT_URI: ${{ secrets.OAUTH_REDIRECT_URI }}
+      TD2_ENC_KEY_B64: ${{ secrets.TD2_ENC_KEY_B64 }}
 
     steps:
       - uses: actions/checkout@v4
@@ -20,8 +27,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/*"
-          cache: "pnpm"
+          node-version: 'lts/*'
+          cache: 'pnpm'
           cache-dependency-path: |
             pnpm-lock.yaml
             app/pnpm-lock.yaml
@@ -29,21 +36,12 @@ jobs:
       - name: Install dependencies (root, svelte)
         run: pnpm run i
 
-      - name: Build the svelte site
-        run: pnpm build
-
-      - name: Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3.0
-        with:
-          publish-dir: "./app/build"
-          production-branch: main
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "${{ github.event.pull_request.title }} Deploy Preview"
-          enable-pull-request-comment: false
-          enable-commit-comment: false
-          overwrites-pull-request-comment: false
-          github-deployment-description: "Netlify Deploy Preview"
+      - name: Deploy to Netlify (CLI Preview)
+        id: deploy
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        timeout-minutes: 1
+        run: pnpm exec netlify deploy --build --message "${{ github.event.pull_request.title }} Deploy Preview"
+        timeout-minutes: 2
+
+      # Preview URL is still captured in the step summary above; no PR comments or GitHub Deployment created.

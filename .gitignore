@@ -32,7 +32,8 @@ out
 .svelte-kit
 /package
 
-# Shared files
-*/shared
+# Local Netlify folder
+.netlify
 
+# App build files
 app/dist

@@ -6,9 +6,10 @@
   "packageManager": "pnpm@10.14.0",
   "description": "Modernized Tiddly Drive 2 Google Drive app integration",
   "scripts": {
-    "i": "pnpm install && cd ./app && pnpm install",
+    "i": "pnpm i && cd ./app && pnpm install",
     "build": "cd ./app && pnpm run build",
-    "dev": "pnpm --dir app dev",
+    "dev": "netlify dev",
+    "dev:app": "cd ./app && pnpm run dev",
     "preview": "cd ./app && pnpm run preview",
     "icons:clean": "rm -rf branding/png && mkdir -p branding/png",
     "icons:single": "rsvg-convert -w $WIDTH -h $WIDTH branding/logo-icon.svg > branding/png/icon-$WIDTH.png",
@@ -19,8 +20,14 @@
   },
   "devDependencies": {
     "@aneuhold/eslint-config": "^1.3.3",
+    "@netlify/functions": "^2.6.0",
+    "@types/node": "^22.7.4",
     "concurrently": "^8.2.2",
     "dotenv": "^16.4.5",
-    "esbuild": "^0.21.5"
+    "esbuild": "^0.21.5",
+    "eslint": "^9.36.0",
+    "netlify-cli": "^23.6.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
   }
 }
