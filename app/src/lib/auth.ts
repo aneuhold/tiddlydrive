@@ -1,4 +1,4 @@
-import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
+// No GIS token client types are imported because token minting is handled by the backend.
 
 /*
  * Google Drive API Scope Strategy:
@@ -12,14 +12,12 @@ import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from './types.js';
  */
 
 const DEFAULT_SCOPE = 'https://www.googleapis.com/auth/drive.file';
-const CLIENT_ID = '477983451498-28pnsm6sgqfm5l2gk0pris227couk477.apps.googleusercontent.com';
 const WEB_API_KEY = 'AIzaSyBa2pekTr_FkdjYQlZDjHGuuxwNO6EY9Pg';
 const SCOPE_QUERY_PARAM = 'td_scope';
 
 // Discovery doc URL for APIs used by the app
 const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
 
-let tokenClient: GoogleTokenClient | null = null;
 const TOKEN_STORAGE_KEY = 'td2_gapi_token';
 
 type StoredToken = {
@@ -79,24 +77,7 @@ const waitForGapi = async (): Promise<void> =>
     }, 50);
   });
 
-/**
- * Waits for Google Identity Services to be available on window.
- *
- * @returns Promise that resolves when GIS is available
- */
-const waitForGoogleIdentity = async (): Promise<void> =>
-  new Promise((resolve) => {
-    if (window.google?.accounts?.oauth2) {
-      resolve();
-      return;
-    }
-    const iv = setInterval(() => {
-      if (window.google?.accounts?.oauth2) {
-        clearInterval(iv);
-        resolve();
-      }
-    }, 50);
-  });
+// GIS popup flows are not used—tokens come from the backend via refresh token cookie.
 
 /**
  * Resolve effective scope from URL param. Only 'drive' is allowed as an override.
@@ -143,32 +124,13 @@ const initializeGapiClient = async (): Promise<void> => {
 /**
  * Initializes the Google Identity Services token client.
  */
-const initializeGoogleIdentityServices = async (): Promise<void> => {
-  await waitForGoogleIdentity();
-  const gis = window.google?.accounts?.oauth2;
-  if (!gis || typeof gis.initTokenClient !== 'function') {
-    throw new Error('Google Identity Services not available');
-  }
-
-  const scope = determineScope();
-  // Surface when a broader-than-default scope is in use to help testing and reviews
-  if (scope === 'https://www.googleapis.com/auth/drive') {
-    console.log('[tiddlydrive] Using non-default OAuth scope: drive');
-  }
-
-  tokenClient = gis.initTokenClient({
-    client_id: CLIENT_ID,
-    scope,
-    callback: () => {} // Will be set per request
-  });
-};
+// No GIS token client needed; tokens are minted via backend using refresh token cookie.
 
 /**
  * Initializes both Google API client and Google Identity Services.
  */
 export const initAuth = async (): Promise<void> => {
   await initializeGapiClient();
-  await initializeGoogleIdentityServices();
 };
 
 /**
@@ -186,65 +148,135 @@ export const initAuth = async (): Promise<void> => {
  * @param opts.prompt When set to 'consent', forces the Google consent screen
  * @returns Promise resolving to a valid OAuth access token string
  */
-export const getAccessToken = async (opts: { prompt?: 'consent' } = {}): Promise<string> => {
-  // Ensure auth is initialized
-  if (!tokenClient || !window.gapi?.client) {
-    await initAuth();
+/**
+ * Retrieves a valid access token via the backend.
+ * Strategy:
+ * - If a cached token for the effective scope is still valid, reuse it.
+ * - Otherwise, call `/api/token` (credentials: include). If 401, open `/api/oauth/start` in a popup
+ *   and, once closed, retry `/api/token`.
+ * - On success, write token to gapi.client and local cache.
+ *
+ * @returns Promise that resolves to an OAuth access token string
+ */
+export const getAccessToken = async (): Promise<string> => {
+  if (!window.gapi?.client) await initAuth();
+
+  const scope = determineScope();
+
+  const stored = readStoredToken(scope);
+  if (stored) {
+    const gapiClient = window.gapi?.client;
+    if (!gapiClient) throw new Error('Google API client not available');
+    gapiClient.setToken({ access_token: stored.access_token });
+    return stored.access_token;
   }
 
-  return new Promise((resolve, reject) => {
-    if (!tokenClient) {
-      reject(new Error('Token client not initialized'));
-      return;
-    }
-    if (!window.gapi?.client) {
-      reject(new Error('Google API client not available'));
-      return;
-    }
+  const mint = async (): Promise<{ access_token: string; expires_in: number }> => {
+    const resp = await fetch('/api/token', { credentials: 'include', method: 'GET' });
+    if (resp.status === 401) throw new Error('no_session');
+    if (!resp.ok) throw new Error(`token_failed:${resp.status}`);
+    return resp.json();
+  };
 
-    const scope = determineScope();
-
-    // If we have a still-valid stored token for this scope and no explicit consent request,
-    // reuse it to avoid an extra network round trip.
-    const stored = !opts.prompt ? readStoredToken(scope) : null;
-    if (stored) {
-      window.gapi.client.setToken({ access_token: stored.access_token });
-      resolve(stored.access_token);
-      return;
-    }
-
-    tokenClient.callback = (resp: GoogleOAuth2TokenResponse) => {
-      if (resp.error) {
-        // If caller didn't explicitly request consent, indicate that consent is required so
-        // the UI can trigger an interactive flow in response to a user gesture.
-        if (opts.prompt !== 'consent') {
-          reject(new Error('consent_required'));
-          return;
-        }
-        reject(new Error(resp.error));
-        return;
+  try {
+    const data = (await mint()) as { access_token: string; expires_in: number; scope?: string };
+    // If the access token scope does not satisfy the desired scope, force re-consent with override
+    if (!isScopeSatisfied(data.scope, scope)) {
+      const pageParams = new URLSearchParams(location.search);
+      const override =
+        pageParams.get(SCOPE_QUERY_PARAM) ||
+        (scope.endsWith('/drive') ? 'drive' : scope.endsWith('/drive.file') ? 'drive.file' : null);
+      const startUrl = override
+        ? `/api/oauth/start?${SCOPE_QUERY_PARAM}=${encodeURIComponent(override)}`
+        : '/api/oauth/start';
+      await openAuthPopupAndWait(startUrl);
+      const data2 = (await mint()) as { access_token: string; expires_in: number; scope?: string };
+      if (!isScopeSatisfied(data2.scope, scope)) {
+        throw new Error('scope_not_granted');
       }
-
-      const accessToken = resp.access_token;
-      const expiresIn = resp.expires_in;
-
-      // Set token in Google API client for future requests
-      const gapiClient = window.gapi && window.gapi.client;
-      if (gapiClient) {
-        gapiClient.setToken({ access_token: accessToken });
+      const gapiClient2 = window.gapi?.client;
+      if (!gapiClient2) throw new Error('Google API client not available');
+      gapiClient2.setToken({ access_token: data2.access_token });
+      writeStoredToken(data2.access_token, data2.expires_in, scope);
+      return data2.access_token;
+    }
+    const gapiClient = window.gapi?.client;
+    if (!gapiClient) throw new Error('Google API client not available');
+    gapiClient.setToken({ access_token: data.access_token });
+    writeStoredToken(data.access_token, data.expires_in, scope);
+    return data.access_token;
+  } catch (e) {
+    if (e instanceof Error && e.message === 'no_session') {
+      // Open OAuth start in a popup and wait for it to close
+      const pageParams = new URLSearchParams(location.search);
+      const override = pageParams.get(SCOPE_QUERY_PARAM);
+      const startUrl = override
+        ? `/api/oauth/start?${SCOPE_QUERY_PARAM}=${encodeURIComponent(override)}`
+        : '/api/oauth/start';
+      await openAuthPopupAndWait(startUrl);
+      const data = (await mint()) as { access_token: string; expires_in: number; scope?: string };
+      if (!isScopeSatisfied(data.scope, scope)) {
+        // If still not satisfied after consent (e.g., user denied broader scope), surface a clear error
+        throw new Error('scope_not_granted');
       }
-
-      // Persist token (scoped) so it survives reloads and we can assess expiry
-      if (!Number.isNaN(expiresIn) && expiresIn > 0) {
-        writeStoredToken(accessToken, expiresIn, scope);
-      }
-
-      resolve(accessToken);
-    };
-
-    // Default: silent request that will refresh or mint a token without prompting.
-    // If consent is explicitly requested, show the consent screen.
-    const prompt = opts.prompt === 'consent' ? 'consent' : '';
-    tokenClient.requestAccessToken({ prompt });
-  });
+      const gapiClient = window.gapi?.client;
+      if (!gapiClient) throw new Error('Google API client not available');
+      gapiClient.setToken({ access_token: data.access_token });
+      writeStoredToken(data.access_token, data.expires_in, scope);
+      return data.access_token;
+    }
+    throw e;
+  }
 };
+
+/**
+ * Returns true if the granted token scopes satisfy the desired scope.
+ * Accepts a string (space-delimited) or undefined for grantedScopes.
+ * Rules:
+ * - desired drive.file is satisfied by either drive.file or drive
+ * - desired drive requires drive
+ *
+ * @param grantedScopes Space-delimited scopes returned by the token endpoint
+ * @param desiredScope Full scope URL the app wants (e.g., https://www.googleapis.com/auth/drive)
+ * @returns True if the granted scopes cover the desired scope
+ */
+function isScopeSatisfied(grantedScopes: string | undefined, desiredScope: string): boolean {
+  if (!grantedScopes) return false;
+  const list = grantedScopes.split(/\s+/).filter(Boolean);
+  const DRIVE = 'https://www.googleapis.com/auth/drive';
+  const DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file';
+  if (desiredScope === DRIVE) return list.includes(DRIVE);
+  if (desiredScope === DRIVE_FILE) return list.includes(DRIVE) || list.includes(DRIVE_FILE);
+  // Fallback: exact match
+  return list.includes(desiredScope);
+}
+
+/**
+ * Opens a small centered popup to the given URL and resolves when the window closes.
+ *
+ * @param url Absolute or relative URL to open in the popup
+ * @returns Promise that resolves when the popup window is closed
+ */
+const openAuthPopupAndWait = async (url: string): Promise<void> =>
+  new Promise((resolve) => {
+    const w = 500;
+    const h = 600;
+    const width = window.innerWidth || document.documentElement.clientWidth || screen.width;
+    const height = window.innerHeight || document.documentElement.clientHeight || screen.height;
+    const left = width / 2 - w / 2 + (window.screenX || 0);
+    const top = height / 2 - h / 2 + (window.screenY || 0);
+    const features = `scrollbars=yes, width=${w}, height=${h}, top=${top}, left=${left}`;
+    const popup = window.open(url, 'td2_auth', features);
+    if (!popup) {
+      // Popup blocked; navigate current tab as a fallback
+      window.location.href = url;
+      resolve();
+      return;
+    }
+    const iv = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(iv);
+        resolve();
+      }
+    }, 300);
+  });

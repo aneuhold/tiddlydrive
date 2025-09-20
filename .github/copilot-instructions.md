@@ -20,6 +20,7 @@
 - Add JSDoc for all methods, functions, and classes (include `@param`, omit `@returns`)
 - Add JSDoc for public class properties only if complex
 - Never prefix functions/methods with underscores
+- Avoid abbreviations unless very common (e.g., `id`, `url`, `html`, `json`)
 
 ### Class Structure
 

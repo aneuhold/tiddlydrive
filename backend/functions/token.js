@@ -64,7 +64,7 @@ exports.handler = async (event) => {
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-      body: JSON.stringify({ access_token: data.access_token, expires_in: data.expires_in })
+      body: JSON.stringify({ access_token: data.access_token, expires_in: data.expires_in, scope: data.scope })
     };
   } catch (e) {
     return { statusCode: 500, body: String(e) };

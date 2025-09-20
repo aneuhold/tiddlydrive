@@ -22,9 +22,13 @@ This project is a modernized Tiddly Drive app built with Svelte 5 and Vite. It i
    pnpm dev
    ```
 
-3. Open the dev loader URL to simulate Drive "Open with" (uses the state param):
+3. Open a dev URL to simulate Drive "Open with" (uses the state param):
 
-   http://localhost:4317/?state=%7B%22ids%22:%5B%221ujSre3E0f8HxLW4pqSTh5bFeztEB5zTx%22%5D,%22action%22:%22open%22,%22userId%22:%22me%22,%22resourceKeys%22:%7B%7D%7D
+   - To simulate the Drive "Open with" (uses the state param): http://localhost:4317/?state=%7B%22ids%22:%5B%221ujSre3E0f8HxLW4pqSTh5bFeztEB5zTx%22%5D,%22action%22:%22open%22,%22userId%22:%22me%22,%22resourceKeys%22:%7B%7D%7D
+
+   > ❗️ In order for this URL to work, you need to have opened the file with the provided ID via Tiddly Drive 2 in the Google Drive UI at least once. Otherwise, use the URL below. It requires wider permissions, but doesn't require opening in Google Drive first.
+
+   - Dev URL with wider scope: http://localhost:4317/?id=1ujSre3E0f8HxLW4pqSTh5bFeztEB5zTx&td_scope=drive
 
    Tip: You can also pass a simpler `?id=<DRIVE_FILE_ID>` during development; the app supports either `id` or `state`.
 
@@ -38,12 +42,6 @@ This project is a modernized Tiddly Drive app built with Svelte 5 and Vite. It i
 
 For testing or app review, you may need to use the broader `drive` scope (for example, to enable Google Drive's "Open with" flow before the app is fully verified). You can opt-in via a URL query parameter; no rebuild is required, and it works locally and in production.
 
-**Production scopes** (what users actually experience):
-- `drive.file` - Core functionality to read and write files you explicitly choose to open
-- `drive.install` - Required for the "Open With" option in Google Drive's context menu  
-- `userinfo.email` and `userinfo.profile` - Required for Google Workspace Marketplace publishing (data is not used by the app)
-
-**Development/testing scope override**:
 - Default scope: `drive.file` (least privilege for development)
 - Override via query param:
   - `?td_scope=drive` → uses `https://www.googleapis.com/auth/drive`

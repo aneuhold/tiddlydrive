@@ -6,8 +6,8 @@
  * Netlify Function handler: clears `td2_rt` and helper `td2_oauth` cookies.
  */
 exports.handler = async () => {
-  const clearRt = `td2_rt=; Path=/api/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`;
-  const clearHelper = `td2_oauth=; Path=/api/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`;
+  const clearRt = `td2_rt=; Path=/api/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`;
+  const clearHelper = `td2_oauth=; Path=/api/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`;
   return {
     statusCode: 204,
     headers: { 'Set-Cookie': [clearRt, clearHelper] },
