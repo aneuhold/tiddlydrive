@@ -7,13 +7,22 @@ import { encrypt } from './crypto-util';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
+type TokenResponse = {
+  access_token?: string;
+  expires_in?: number;
+  refresh_token?: string;
+  scope?: string;
+  token_type?: string;
+};
+
 /**
+ * Exchange an OAuth authorization code for tokens at Google's token endpoint.
  *
- * @param code
- * @param clientId
- * @param clientSecret
- * @param redirectUri
- * @param codeVerifier
+ * @param code The authorization code received from Google
+ * @param clientId OAuth client ID
+ * @param clientSecret OAuth client secret (if required)
+ * @param redirectUri Redirect URI registered in the Google Console
+ * @param codeVerifier PKCE code_verifier paired with the code_challenge
  */
 async function exchangeCodeForTokens(
   code: string,
@@ -21,7 +30,7 @@ async function exchangeCodeForTokens(
   clientSecret: string,
   redirectUri: string,
   codeVerifier: string
-): Promise<any> {
+): Promise<TokenResponse> {
   const body = new URLSearchParams();
   body.set('grant_type', 'authorization_code');
   body.set('code', code);
@@ -39,7 +48,7 @@ async function exchangeCodeForTokens(
     const text = await resp.text().catch(() => '');
     throw new Error(`Token exchange failed: ${resp.status} ${text}`);
   }
-  return resp.json();
+  return resp.json() as Promise<TokenResponse>;
 }
 
 export const handler: Handler = async (event) => {
@@ -48,8 +57,8 @@ export const handler: Handler = async (event) => {
     const clientSecret = process.env['GOOGLE_CLIENT_SECRET'] || '';
     const redirectUri = process.env['OAUTH_REDIRECT_URI'];
 
-    const code = event.queryStringParameters?.code || '';
-    const state = event.queryStringParameters?.state || '';
+    const code = event.queryStringParameters?.['code'] || '';
+    const state = event.queryStringParameters?.['state'] || '';
     if (!code) {
       return { statusCode: 400, body: 'Missing code' };
     }
@@ -58,7 +67,7 @@ export const handler: Handler = async (event) => {
     }
 
     // Retrieve PKCE verifier and state from cookie
-    const cookieHeader = event.headers?.cookie || event.headers?.Cookie || '';
+    const cookieHeader = event.headers['cookie'] || event.headers['Cookie'] || '';
     const m = /(?:^|;\s*)td2_oauth=([^;]+)/.exec(cookieHeader);
     const cookiePayload = m ? decodeURIComponent(m[1]) : '';
     let codeVerifier: string | undefined;
@@ -93,7 +102,7 @@ export const handler: Handler = async (event) => {
       redirectUri,
       codeVerifier
     );
-    const refreshToken = tokenData.refresh_token as string | undefined;
+    const refreshToken = tokenData.refresh_token;
     if (!refreshToken) {
       return {
         statusCode: 400,
@@ -105,14 +114,10 @@ export const handler: Handler = async (event) => {
     const aad = Buffer.from('td2_refresh_v1', 'utf8');
     const enc = encrypt(Buffer.from(refreshToken, 'utf8'), aad);
     // Determine cookie security flags based on protocol
-    const xfProto = (
-      event?.headers?.['x-forwarded-proto'] ||
-      event?.headers?.['X-Forwarded-Proto'] ||
-      ''
-    )
+    const xfProto = (event.headers['x-forwarded-proto'] || event.headers['X-Forwarded-Proto'] || '')
       .split(',')[0]
       .trim();
-    const host = event?.headers?.host || event?.headers?.Host || '';
+    const host = event.headers['host'] || event.headers['Host'] || '';
     const isHttps = xfProto === 'https' || host.endsWith(':443');
     const secureAttr = isHttps ? '; Secure' : '';
     // 30 days, Lax, scoped to /api/
@@ -120,7 +125,7 @@ export const handler: Handler = async (event) => {
     // Clear the oauth helper cookie (Path=/ to match where it was set)
     const clearOauthCookie = `td2_oauth=; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=0`;
 
-    const html = `<!doctype html><html><body><script>window.close();<\/script>OK</body></html>`;
+    const html = `<!doctype html><html><body><script>window.close();</script>OK</body></html>`;
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'text/html' },

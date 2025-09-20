@@ -11,11 +11,25 @@ const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
  * @param clientId
  * @param clientSecret
  */
+type TokenResponse = {
+  access_token: string;
+  expires_in: number;
+  scope?: string;
+  token_type?: string;
+};
+
+/**
+ * Mint a new access token using a Google refresh token.
+ *
+ * @param refreshToken The Google OAuth refresh token
+ * @param clientId OAuth client ID
+ * @param clientSecret OAuth client secret (if required)
+ */
 async function mintAccessToken(
   refreshToken: string,
   clientId: string,
   clientSecret: string
-): Promise<any> {
+): Promise<TokenResponse> {
   const body = new URLSearchParams();
   body.set('grant_type', 'refresh_token');
   body.set('refresh_token', refreshToken);
@@ -31,7 +45,7 @@ async function mintAccessToken(
     const text = await resp.text().catch(() => '');
     throw new Error(`Refresh failed: ${resp.status} ${text}`);
   }
-  return resp.json();
+  return resp.json() as Promise<TokenResponse>;
 }
 
 /**
@@ -40,7 +54,7 @@ async function mintAccessToken(
  * - Optionally checks `Origin`/`Referer` to be same-origin for CSRF defense-in-depth
  * - Calls Google's token endpoint to mint an access token
  *
- * @param event
+ * @param event Netlify handler event
  */
 export const handler: Handler = async (event) => {
   try {
@@ -49,15 +63,11 @@ export const handler: Handler = async (event) => {
     if (!clientId) return { statusCode: 500, body: 'Missing GOOGLE_CLIENT_ID' };
 
     // Same-origin check (best-effort). In local dev, Origin/Referer may be absent or differ.
-    const host = event.headers?.host || event.headers?.Host || '';
-    const origin = event.headers?.origin || event.headers?.Origin || '';
-    const referer = event.headers?.referer || event.headers?.Referer || '';
-    const proto =
-      (
-        event.headers?.['x-forwarded-proto'] ||
-        event.headers?.['X-Forwarded-Proto'] ||
-        ''
-      ).toString() || (host.startsWith('localhost') ? 'http' : 'https');
+    const host = event.headers['host'] || event.headers['Host'] || '';
+    const origin = event.headers['origin'] || event.headers['Origin'] || '';
+    const referer = event.headers['referer'] || event.headers['Referer'] || '';
+    const xf = event.headers['x-forwarded-proto'] || event.headers['X-Forwarded-Proto'] || '';
+    const proto = xf || (host.startsWith('localhost') ? 'http' : 'https');
     const expected = host ? `${proto}://${host}` : '';
     if (expected && origin && origin !== expected) {
       return { statusCode: 403, body: 'Invalid origin' };
@@ -66,7 +76,7 @@ export const handler: Handler = async (event) => {
       return { statusCode: 403, body: 'Invalid referer' };
     }
 
-    const cookie = event.headers?.cookie || event.headers?.Cookie || '';
+    const cookie = event.headers['cookie'] || event.headers['Cookie'] || '';
     const rtMatch = /(?:^|;\s*)td2_rt=([^;]+)/.exec(cookie);
     if (!rtMatch) return { statusCode: 401, body: 'No session' };
     const enc = decodeURIComponent(rtMatch[1]);

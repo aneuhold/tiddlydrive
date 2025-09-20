@@ -7,13 +7,13 @@ import type { Handler } from '@netlify/functions';
 /**
  * Netlify Function handler: clears `td2_rt` and helper `td2_oauth` cookies.
  */
-export const handler: Handler = async () => {
+export const handler: Handler = () => {
   const clearRt = `td2_rt=; Path=/api/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`;
   const clearHelper = `td2_oauth=; Path=/api/; Secure; HttpOnly; SameSite=Lax; Max-Age=0`;
-  return {
+  return Promise.resolve({
     statusCode: 204,
     headers: {},
     multiValueHeaders: { 'Set-Cookie': [clearRt, clearHelper] },
     body: ''
-  };
+  });
 };

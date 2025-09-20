@@ -2,12 +2,12 @@
 // Uses a single symmetric key provided via env var TD2_ENC_KEY_B64 (32-byte key, base64url or base64).
 // This keeps the backend storage-free while maintaining confidentiality and integrity.
 
-import crypto from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 /**
  * Encodes a Buffer into base64url without padding.
  *
- * @param buf
+ * @param buf Input buffer to encode
  */
 export function b64urlEncode(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
@@ -16,7 +16,7 @@ export function b64urlEncode(buf: Buffer): string {
 /**
  * Decodes a base64url string into a Buffer.
  *
- * @param str
+ * @param str Base64url-encoded string
  */
 export function b64urlDecode(str: string): Buffer {
   const pad = str.length % 4 === 2 ? '==' : str.length % 4 === 3 ? '=' : '';
@@ -41,13 +41,13 @@ function loadKey(): Buffer {
  * - iv: 12-byte random IV
  * - ciphertext, tag: from AES-GCM
  *
- * @param plaintext
- * @param aad
+ * @param plaintext The data to encrypt
+ * @param aad Optional additional authenticated data
  */
 export function encrypt(plaintext: Buffer, aad?: Buffer): string {
   const key = loadKey();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
   if (aad && aad.length) cipher.setAAD(aad);
   const enc = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -58,8 +58,8 @@ export function encrypt(plaintext: Buffer, aad?: Buffer): string {
 /**
  * Decrypts a base64url compact string produced by encrypt().
  *
- * @param tokenEnc
- * @param aad
+ * @param tokenEnc The encrypted token string
+ * @param aad Optional additional authenticated data
  */
 export function decrypt(tokenEnc: string, aad?: Buffer): Buffer {
   const key = loadKey();
@@ -71,7 +71,7 @@ export function decrypt(tokenEnc: string, aad?: Buffer): Buffer {
   const iv = b64urlDecode(ivB64);
   const ct = b64urlDecode(ctB64);
   const tag = b64urlDecode(tagB64);
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  const decipher = createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
   if (aad && aad.length) decipher.setAAD(aad);
   decipher.setAuthTag(tag);
   const out = Buffer.concat([decipher.update(ct), decipher.final()]);
