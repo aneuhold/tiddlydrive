@@ -1,5 +1,6 @@
 <script>
   import { resolve } from '$app/paths';
+  import GitHubIcon from '$lib/ui/GitHubIcon.svelte';
 
   // Marketing landing page (moved under /info)
 </script>
@@ -28,13 +29,23 @@
   <section class="actions">
     <a
       class="primary-btn button-text"
-      href="https://github.com/aneuhold/tiddlydrive"
+      href="https://workspace.google.com/marketplace/app/tiddly_drive_2/477983451498?flow_type=2"
       target="_blank"
       rel="noreferrer"
     >
-      View Repository
+      Get from Marketplace
     </a>
     <div class="inline-links subtitle-1">
+      <a
+        href="https://github.com/aneuhold/tiddlydrive"
+        target="_blank"
+        rel="noreferrer"
+        class="github-link"
+        title="View Source Code on GitHub"
+      >
+        <GitHubIcon />
+      </a>
+      <span aria-hidden="true">·</span>
       <a data-sveltekit-preload-data="hover" href={resolve('/info/privacy')}>Privacy Policy</a>
       <span aria-hidden="true">·</span>
       <a data-sveltekit-preload-data="hover" href={resolve('/info/terms')}>Terms of Service</a>
@@ -94,8 +105,22 @@
     align-items: center;
     gap: 0.85rem;
   }
-  .inline-links a {
-    color: var(--color-primary-700, var(--color-primary));
+  .github-link {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .inline-links {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    a {
+      color: var(--color-primary);
+    }
   }
   code {
     background: var(--color-accent-light);
