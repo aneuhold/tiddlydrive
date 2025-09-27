@@ -1,4 +1,4 @@
-import { getAccessToken } from '$lib/auth.js';
+import { authService } from '$lib/services/authService';
 import type { DriveFileMeta, GapiResponse, GoogleAPIClient } from '$lib/types';
 
 /**
@@ -42,7 +42,7 @@ class GoogleDriveRepository {
     } catch (err: unknown) {
       // Attempt one silent token refresh on auth failures, then retry
       if (this.isAuthError(err)) {
-        const newToken = await getAccessToken();
+        const newToken = await authService.getAccessToken();
         this.ensureGapiToken(newToken);
         try {
           const retryResp = await request();
@@ -82,7 +82,7 @@ class GoogleDriveRepository {
       return resp.body;
     } catch (err: unknown) {
       if (this.isAuthError(err)) {
-        const newToken = await getAccessToken();
+        const newToken = await authService.getAccessToken();
         this.ensureGapiToken(newToken);
         try {
           const retryResp: GapiResponse<string> = await request();
@@ -127,7 +127,7 @@ class GoogleDriveRepository {
       return resp.result;
     } catch (err: unknown) {
       if (this.isAuthError(err)) {
-        const newToken = await getAccessToken();
+        const newToken = await authService.getAccessToken();
         this.ensureGapiToken(newToken);
         try {
           const retryResp = await request();

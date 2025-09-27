@@ -1,3 +1,5 @@
+You are an expert TypeScript developer and up to date on the most modern TypeScript and JavaScript syntax.
+
 ## Overall Project Guidelines
 
 - TypeScript source code with Vitest testing and pnpm package management
