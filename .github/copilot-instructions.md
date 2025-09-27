@@ -46,3 +46,19 @@
 - Never test private methods directly
 - Structure: Root describe as "Unit Tests"/"Integration Tests", nested describes named after tested methods
 - Always prefer to use the built-in Vitest VS Code extension for testing
+
+## Svelte
+
+- Use `<script lang="ts">` for TypeScript
+- Use Runes always for reactivity. For example:
+
+```ts
+const { title, children } = $props<{
+  title: string;
+  children?: Snippet;
+}>();
+let dialogEl = $state<HTMLDialogElement | null>(null);
+$effect(() => {
+  // Some effect logic here
+});
+```

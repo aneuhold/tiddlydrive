@@ -6,11 +6,11 @@
 
 Tiddly Drive 2 is a modern web application that bridges the gap between [TiddlyWiki](https://tiddlywiki.com/) and cloud saving. Built with Svelte and TypeScript, it provides a smooth, reliable editing experience with intelligent conflict detection and automatic saving.
 
-Huge thanks to the original creator [LordRatte](https://github.com/LordRatte) for the all the years of supporting this project and all the original code!!! See [the original repo here](https://github.com/tiddlydrive/tiddlydrive.github.io).
+Huge thanks to the original creator LordRatte for the all the years of supporting this project and all the original code!!! See [the original repo here](https://github.com/tiddlydrive/tiddlydrive.github.io).
 
 ## 🚀 Quick Start
 
-1. **Open the app** at [tiddlydrive.tonyneuhold.com](https://tiddlydrive.tonyneuhold.com)
+1. **Add the app to your Google Drive** at [Google Marketplace](https://workspace.google.com/marketplace/app/tiddly_drive_2/477983451498?flow_type=2)
 2. **In Google Drive**, right-click any TiddlyWiki HTML file and choose "Open with → Tiddly Drive 2"
 3. **Start editing!** Your changes are automatically saved back to Google Drive
 4. **Customize settings** via the gear button
