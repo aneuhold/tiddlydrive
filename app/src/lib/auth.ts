@@ -203,15 +203,30 @@ const setGapiAccessToken = (token: string): void => {
 };
 
 /**
- * Builds the OAuth start URL, optionally honoring a scope override.
+ * Builds the OAuth start URL, optionally honoring a scope override and always including
+ * a `td_return` parameter so that the backend can route (or instruct the opener to route)
+ * back to the current application page after the OAuth popup / redirect completes.
+ *
+ * Security: only a relative path (starting with '/') is ever sent. We intentionally do not
+ * include the origin to avoid any possibility of an open redirect; the server validates it.
  *
  * @param override Optional override value for the `td_scope` query parameter
  * @returns The OAuth start URL (relative)
  */
-const buildOauthStartUrl = (override: string | null | undefined): string =>
-  override
-    ? `/api/oauth/start?${SCOPE_QUERY_PARAM}=${encodeURIComponent(override)}`
-    : '/api/oauth/start';
+const buildOauthStartUrl = (override: string | null | undefined): string => {
+  const params = new URLSearchParams();
+  if (override) params.set(SCOPE_QUERY_PARAM, override);
+  try {
+    // Preserve the current in-app location (path + query + hash) so the user returns
+    // directly to the opened file / state after first-time consent.
+    const ret = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (ret.startsWith('/')) params.set('td_return', ret);
+  } catch {
+    /* ignore */
+  }
+  const qs = params.toString();
+  return qs ? `/api/oauth/start?${qs}` : '/api/oauth/start';
+};
 
 /**
  * Derives a scope override short value ("drive" or "drive.file") from a full desired scope URL.
@@ -402,32 +417,85 @@ function isScopeSatisfied(grantedScopes: string | undefined, desiredScope: strin
   return list.includes(desiredScope);
 }
 
+/** Message type posted from the OAuth callback page to the opener. */
+const AUTH_COMPLETE_MESSAGE = 'td2_auth_complete';
+
 /**
- * Opens a small centered popup to the given URL and resolves when the window closes.
+ * Compute a centered popup feature string for a given logical size.
  *
- * @param url Absolute or relative URL to open in the popup
- * @returns Promise that resolves when the popup is closed (or navigation fallback occurs)
+ * @param targetWidth Desired popup width in pixels
+ * @param targetHeight Desired popup height in pixels
+ * @returns The window.open feature string
  */
-const openAuthPopupAndWait = async (url: string): Promise<void> =>
+const computeCenteredPopupFeatures = (targetWidth: number, targetHeight: number): string => {
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || screen.width;
+  const viewportHeight =
+    window.innerHeight || document.documentElement.clientHeight || screen.height;
+  const left = viewportWidth / 2 - targetWidth / 2 + (window.screenX || 0);
+  const top = viewportHeight / 2 - targetHeight / 2 + (window.screenY || 0);
+  return `scrollbars=yes,width=${targetWidth},height=${targetHeight},top=${top},left=${left}`;
+};
+
+/**
+ * Open an auth popup (or fall back to navigation if blocked).
+ *
+ * @param url URL to open
+ * @returns The popup window instance or null if blocked (navigation fallback already triggered)
+ */
+const openAuthPopup = (url: string): Window | null => {
+  const features = computeCenteredPopupFeatures(500, 600);
+  const popup = window.open(url, 'td2_auth', features);
+  if (!popup) {
+    // Popup blocked: use same-tab navigation as a fallback path.
+    window.location.href = url;
+    return null;
+  }
+  return popup;
+};
+
+/**
+ * Wait until either the popup posts the completion message or it closes.
+ *
+ * @param popup Popup window object (may be null if blocked)
+ * @returns Promise that resolves when auth flow finishes or fallback navigation occurred
+ */
+const waitForAuthPopupCompletion = (popup: Window | null): Promise<void> =>
   new Promise((resolve) => {
-    const w = 500;
-    const h = 600;
-    const width = window.innerWidth || document.documentElement.clientWidth || screen.width;
-    const height = window.innerHeight || document.documentElement.clientHeight || screen.height;
-    const left = width / 2 - w / 2 + (window.screenX || 0);
-    const top = height / 2 - h / 2 + (window.screenY || 0);
-    const features = `scrollbars=yes, width=${w}, height=${h}, top=${top}, left=${left}`;
-    const popup = window.open(url, 'td2_auth', features);
+    // If there is no popup (blocked), we've already navigated away and can resolve immediately.
     if (!popup) {
-      // Popup blocked; navigate current tab as a fallback
-      window.location.href = url;
       resolve();
       return;
     }
-    const iv = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(iv);
-        resolve();
-      }
+
+    let settled = false;
+    const complete = () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('message', onMessage);
+      clearInterval(closePollInterval);
+      resolve();
+    };
+
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.data && ev.data.type === AUTH_COMPLETE_MESSAGE) complete();
+    };
+
+    window.addEventListener('message', onMessage);
+
+    // Periodically poll for the user manually closing the popup.
+    const closePollInterval = setInterval(() => {
+      if (popup.closed) complete();
     }, 300);
   });
+
+/**
+ * High-level helper: open the OAuth popup (centered) and wait until it either reports
+ * completion via postMessage or is closed by the user. Falls back to same-tab navigation when
+ * popups are blocked.
+ *
+ * @param url Absolute or relative URL to initiate the OAuth flow
+ */
+const openAuthPopupAndWait = async (url: string): Promise<void> => {
+  const popup = openAuthPopup(url);
+  await waitForAuthPopupCompletion(popup);
+};

@@ -4,6 +4,7 @@
 
 import type { Handler } from '@netlify/functions';
 import { encrypt } from './crypto-util';
+import { parseTempCookie } from './oauth-shared';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
@@ -70,14 +71,15 @@ export const handler: Handler = async (event) => {
     const cookieHeader = event.headers['cookie'] || event.headers['Cookie'] || '';
     const m = /(?:^|;\s*)td2_oauth=([^;]+)/.exec(cookieHeader);
     const cookiePayload = m ? decodeURIComponent(m[1]) : '';
-    let codeVerifier: string | undefined;
-    let stateCookie: string | undefined;
-    try {
-      const obj = JSON.parse(cookiePayload || '{}') as { v?: string; s?: string };
-      codeVerifier = obj.v;
-      stateCookie = obj.s;
-    } catch {
-      /* ignore */
+    let pkceVerifier: string | undefined;
+    let storedState: string | undefined;
+    let storedReturnPath: string | undefined;
+    const parsed = parseTempCookie(cookiePayload);
+    if (parsed) {
+      // Prefer descriptive keys, fall back to legacy short keys if present
+      pkceVerifier = parsed.verifier || parsed.v;
+      storedState = parsed.state || parsed.s;
+      storedReturnPath = parsed.returnPath || parsed.r;
     }
     if (!cookiePayload) {
       return {
@@ -85,13 +87,13 @@ export const handler: Handler = async (event) => {
         body: 'Missing td2_oauth cookie (PKCE/state not set or wrong path)'
       };
     }
-    if (!codeVerifier) {
+    if (!pkceVerifier) {
       return { statusCode: 400, body: 'Missing PKCE code_verifier in cookie' };
     }
     if (!state) {
       return { statusCode: 400, body: 'Missing state parameter in callback URL' };
     }
-    if (state !== stateCookie) {
+    if (state !== storedState) {
       return { statusCode: 400, body: 'State mismatch between cookie and callback' };
     }
 
@@ -100,7 +102,7 @@ export const handler: Handler = async (event) => {
       clientId,
       clientSecret,
       redirectUri,
-      codeVerifier
+      pkceVerifier
     );
     const refreshToken = tokenData.refresh_token;
     if (!refreshToken) {
@@ -125,7 +127,27 @@ export const handler: Handler = async (event) => {
     // Clear the oauth helper cookie (Path=/ to match where it was set)
     const clearOauthCookie = `td2_oauth=; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=0`;
 
-    const html = `<!doctype html><html><body><script>window.close();</script>OK</body></html>`;
+    // Decide how to finish the flow:
+    // 1. If this was opened as a popup (most common), we try to notify the opener and close.
+    // 2. If no opener OR window.open was blocked (user was redirected in same tab), we redirect
+    //    the browser back to the original return path (if provided) or to '/' as fallback.
+    const safeReturn =
+      storedReturnPath && storedReturnPath.startsWith('/') ? storedReturnPath : '/';
+    const html = `<!doctype html><html><body><script>
+      (function(){
+        try {
+          if (window.opener && !window.opener.closed) {
+            // Best-effort notify opener that auth completed so it can retry token mint.
+            // We use postMessage with a specific type; opener listener can filter on origin & type.
+            window.opener.postMessage({ type: 'td2_auth_complete' }, '*');
+            window.close();
+            return;
+          }
+        } catch (e) { /* cross-origin or other issue */ }
+        // Fallback: navigate current window
+        window.location.replace(${JSON.stringify(safeReturn)});
+      })();
+    </script>OK</body></html>`;
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'text/html' },
