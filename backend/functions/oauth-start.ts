@@ -4,8 +4,11 @@
 
 import type { Handler } from '@netlify/functions';
 import { createHash, randomBytes } from 'node:crypto';
+import { encodeTempCookie } from './oauth-shared';
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+const CLIENT_ID_ENV = 'GOOGLE_CLIENT_ID';
+const REDIRECT_URI_ENV = 'OAUTH_REDIRECT_URI';
 
 /**
  * Encode input as base64url without padding.
@@ -38,16 +41,20 @@ function createPkcePair(): { verifier: string; challenge: string } {
  * @param event Netlify handler event
  */
 export const handler: Handler = (event) => {
-  const clientId = process.env['GOOGLE_CLIENT_ID'];
-  const redirectUri = process.env['OAUTH_REDIRECT_URI'];
+  const clientId = process.env[CLIENT_ID_ENV];
+  const redirectUri = process.env[REDIRECT_URI_ENV];
+
   // Optional scope override via query param `td_scope` (e.g., drive or drive.file)
   const rawScope = (event.queryStringParameters?.['td_scope'] || '').trim();
-  const scope =
-    rawScope === 'drive'
-      ? 'https://www.googleapis.com/auth/drive'
-      : rawScope === 'drive.file'
-        ? 'https://www.googleapis.com/auth/drive.file'
-        : process.env['GOOGLE_SCOPE'] || 'https://www.googleapis.com/auth/drive.file';
+  let scope: string;
+  switch (rawScope) {
+    case 'drive':
+      scope = 'https://www.googleapis.com/auth/drive';
+      break;
+    case 'drive.file':
+    default:
+      scope = 'https://www.googleapis.com/auth/drive.file';
+  }
 
   if (!clientId || !redirectUri) {
     return Promise.resolve({
@@ -57,15 +64,27 @@ export const handler: Handler = (event) => {
   }
 
   // Generate PKCE pair and store verifier + state in a short-lived HttpOnly cookie
-  const { verifier, challenge } = createPkcePair();
-  const state = base64url(randomBytes(16));
-  const cookiePayload = encodeURIComponent(JSON.stringify({ v: verifier, s: state }));
+  const { verifier: pkceVerifier, challenge: pkceChallenge } = createPkcePair();
+  const oauthState = base64url(randomBytes(16));
+
+  // Optional return path (internal only). Trust only relative paths starting with '/'.
+  const rawReturnPath = event.queryStringParameters?.['td_return'];
+  const returnPath =
+    rawReturnPath && rawReturnPath.startsWith('/')
+      ? rawReturnPath.slice(0, 2000) // clamp to prevent abuse
+      : undefined;
+  const cookiePayload = encodeTempCookie(pkceVerifier, oauthState, returnPath);
+
   // Determine if request is over HTTPS to decide whether to add the Secure attribute (not set on localhost http)
-  const xfProto = (event.headers['x-forwarded-proto'] || event.headers['X-Forwarded-Proto'] || '')
+  const forwardedProto = (
+    event.headers['x-forwarded-proto'] ||
+    event.headers['X-Forwarded-Proto'] ||
+    ''
+  )
     .split(',')[0]
     .trim();
   const host = event.headers['host'] || event.headers['Host'] || '';
-  const isHttps = xfProto === 'https' || host.endsWith(':443');
+  const isHttps = forwardedProto === 'https' || host.endsWith(':443');
   const secureAttr = isHttps ? '; Secure' : '';
   // PKCE/state cookie must be sent back on cross-site top-level navigation from Google → use SameSite=Lax
   // Use Path=/ to ensure it’s included regardless of whether callback uses /api/* or /.netlify/functions/*
@@ -78,9 +97,9 @@ export const handler: Handler = (event) => {
   url.searchParams.set('scope', scope);
   url.searchParams.set('access_type', 'offline');
   url.searchParams.set('prompt', 'consent'); // ensure refresh_token issuance on first consent
-  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('code_challenge', pkceChallenge);
   url.searchParams.set('code_challenge_method', 'S256');
-  url.searchParams.set('state', state);
+  url.searchParams.set('state', oauthState);
 
   return Promise.resolve({
     statusCode: 302,

@@ -31,8 +31,3 @@
   from = "/api/token"
   to = "/.netlify/functions/token"
   status = 200
-
-[[redirects]]
-  from = "/api/logout"
-  to = "/.netlify/functions/logout"
-  status = 200

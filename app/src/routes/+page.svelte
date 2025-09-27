@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from '$app/paths';
-  import { initAuth, reauthenticateWithConsent } from '$lib/auth';
   import { prefsStore } from '$lib/prefs';
+  import { authService } from '$lib/services/authService';
   import googleDriveService from '$lib/services/googleDriveService';
 
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
@@ -21,7 +21,7 @@
   const forceAuthenticate = async (): Promise<void> => {
     try {
       // Force a fresh authentication with consent prompt
-      await reauthenticateWithConsent();
+      await authService.reauthenticateWithConsent();
       showToast('Re-authenticated successfully');
     } catch (error) {
       console.error('Force authentication failed:', error);
@@ -37,7 +37,7 @@
         status = 'no-state';
         return;
       }
-      await initAuth();
+      await authService.init();
       status = 'loading';
       // Mount iframe before attempting load
       await tick();

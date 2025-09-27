@@ -1,5 +1,5 @@
-import { getAccessToken } from '$lib/auth.js';
 import googleDriveRepository from '$lib/repositories/googleDriveRepository';
+import { authService } from '$lib/services/authService';
 import type { SaverOptions } from '$lib/services/tiddlyWiki/types';
 import tiddlyWikiService from '$lib/services/tiddlyWikiService';
 import type { DriveFileMeta, DriveOpenState, SaveOptions } from '$lib/types';
@@ -57,7 +57,7 @@ class GoogleDriveService {
       throw new Error('Missing or multi file state');
     this.currentFileId = state.ids[0];
 
-    const token = await getAccessToken();
+    const token = await authService.getAccessToken();
 
     // Get file metadata
     const meta = await googleDriveRepository.getFileMetadata(this.currentFileId, token);
@@ -166,7 +166,7 @@ class GoogleDriveService {
    */
   uploadHtmlMedia = async (html: string): Promise<boolean> => {
     if (!this.currentFileId) throw new Error('File not loaded');
-    const token = await getAccessToken();
+    const token = await authService.getAccessToken();
 
     // Respect a global force-save request (e.g., from "Save Anyway") and reset it
     const forcedSave = this.forceNextSave;
