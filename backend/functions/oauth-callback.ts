@@ -159,46 +159,35 @@ export const handler: Handler = async (event) => {
 function sanitizeReturnPath(p: unknown): string | null {
   if (typeof p !== 'string') return null;
 
-  // Hard size limit
-  if (p.length === 0 || p.length > 512) return null;
+  // Expanded size limit: complex drive share states can get long but clamp to 2000.
+  if (p.length === 0 || p.length > 2000) return null;
 
-  // Reject absolute URLs or protocol-relative or scheme-like prefixes
-  // e.g. "https://", "javascript:", "//evil.com"
+  // Reject absolute / scheme / protocol-relative.
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p) || p.startsWith('//')) return null;
 
-  // Must start with a single slash (avoid "./", "../", etc.)
   if (!p.startsWith('/')) return null;
 
-  // Fast‑fail on raw control chars
   if (/[\0\r\n]/.test(p)) return null;
 
-  // Decode once to inspect encoded payload (may throw)
   let decoded: string;
   try {
     decoded = decodeURIComponent(p);
   } catch {
     return null;
   }
-
-  // Control chars after decoding?
   if (/[\0\r\n]/.test(decoded)) return null;
 
-  // Allow only a conservative set of URL path/query/fragment safe chars.
-  // (RFC 3986 unreserved + a subset of reserved often seen in queries)
-  // Adjust if you need broader support.
-  if (
-    !/^\/[A-Za-z0-9\-._~!$&'()*+,;=:@/%]*([?][A-Za-z0-9\-._~!$&'()*+,;=:@/%]*?)?(#[A-Za-z0-9\-._~!$&'()*+,;=:@/%]*)?$/.test(
-      decoded
-    )
-  ) {
-    return null;
+  // Allow broader safe set: include braces, brackets and quotes because some integrations
+  // embed JSON-ish state objects (often double-encoded). Still exclude < > ` to reduce XSS surface.
+  // Allow a broad ASCII subset (space not expected in decoded URLs). Reject characters that could
+  // break out of JS string context when we later JSON.stringify (we still stringify as defense-in-depth).
+  for (const ch of decoded) {
+    const code = ch.charCodeAt(0);
+    // Control chars
+    if (code < 0x20 || code === 0x7f) return null;
+    // Disallow angle brackets and backticks to reduce XSS surface, also backslash just in case
+    if (ch === '<' || ch === '>' || ch === '`' || ch === '\\') return null;
   }
 
-  // Optional: enforce that it resolves under allowed top-level segments:
-  // if (!/^\/(?:$|app\/|info\/|settings(?:\/|$)|wiki\/)/.test(decoded)) return null;
-
-  // Normalize double slashes (optional):
-  // decoded = decoded.replace(/\/{2,}/g, '/');
-
-  return decoded;
+  return JSON.stringify(decoded);
 }
