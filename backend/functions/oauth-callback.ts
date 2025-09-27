@@ -128,26 +128,16 @@ export const handler: Handler = async (event) => {
     const clearOauthCookie = `td2_oauth=; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=0`;
 
     // Decide how to finish the flow:
-    // 1. If this was opened as a popup (most common), we try to notify the opener and close.
-    // 2. If no opener OR window.open was blocked (user was redirected in same tab), we redirect
-    //    the browser back to the original return path (if provided) or to '/' as fallback.
-    const safeReturn =
-      storedReturnPath && storedReturnPath.startsWith('/') ? storedReturnPath : '/';
+    // 1. If storedReturnPath was provided, then use that as the redirect target.
+    // 2. Close the window
     const html = `<!doctype html><html><body><script>
-      (function(){
-        try {
-          if (window.opener && !window.opener.closed) {
-            // Best-effort notify opener that auth completed so it can retry token mint.
-            // We use postMessage with a specific type; opener listener can filter on origin & type.
-            window.opener.postMessage({ type: 'td2_auth_complete' }, '*');
-            window.close();
-            return;
-          }
-        } catch (e) { /* cross-origin or other issue */ }
-        // Fallback: navigate current window
-        window.location.replace(${JSON.stringify(safeReturn)});
-      })();
+      ${
+        storedReturnPath?.startsWith('/')
+          ? `window.location.replace(${JSON.stringify(storedReturnPath)});`
+          : `window.close();`
+      }
     </script>OK</body></html>`;
+
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'text/html' },

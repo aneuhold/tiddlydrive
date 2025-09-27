@@ -7,6 +7,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { encodeTempCookie } from './oauth-shared';
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
+const CLIENT_ID_ENV = 'GOOGLE_CLIENT_ID';
+const REDIRECT_URI_ENV = 'OAUTH_REDIRECT_URI';
 
 /**
  * Encode input as base64url without padding.
@@ -39,16 +41,20 @@ function createPkcePair(): { verifier: string; challenge: string } {
  * @param event Netlify handler event
  */
 export const handler: Handler = (event) => {
-  const clientId = process.env['GOOGLE_CLIENT_ID'];
-  const redirectUri = process.env['OAUTH_REDIRECT_URI'];
+  const clientId = process.env[CLIENT_ID_ENV];
+  const redirectUri = process.env[REDIRECT_URI_ENV];
+
   // Optional scope override via query param `td_scope` (e.g., drive or drive.file)
   const rawScope = (event.queryStringParameters?.['td_scope'] || '').trim();
-  const scope =
-    rawScope === 'drive'
-      ? 'https://www.googleapis.com/auth/drive'
-      : rawScope === 'drive.file'
-        ? 'https://www.googleapis.com/auth/drive.file'
-        : process.env['GOOGLE_SCOPE'] || 'https://www.googleapis.com/auth/drive.file';
+  let scope: string;
+  switch (rawScope) {
+    case 'drive':
+      scope = 'https://www.googleapis.com/auth/drive';
+      break;
+    case 'drive.file':
+    default:
+      scope = 'https://www.googleapis.com/auth/drive.file';
+  }
 
   if (!clientId || !redirectUri) {
     return Promise.resolve({

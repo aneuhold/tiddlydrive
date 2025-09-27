@@ -98,28 +98,36 @@ class AuthService {
    * @returns Token response after consent + mint
    */
   private async consentAndMint(scopeOverrideShort: string | null): Promise<AccessTokenResponse> {
-    const url = this.buildStartUrl(scopeOverrideShort);
-    await this.popup.openAndWait(url);
+    const { popupUrl, fallbackUrl } = this.buildStartUrls(scopeOverrideShort);
+    await this.popup.openAndWait(popupUrl, fallbackUrl);
     return this.mint();
   }
 
   /**
-   * Build /api/oauth/start URL with optional scope + return path.
+   * Build the popup and fallback /api/oauth/start URLs.
+   * Popup URL: includes scope override only.
+   * Fallback URL: includes scope override plus current location return target (td_return).
    *
    * @param override Short override string or null
-   * @returns Fully formed start URL
+   * @returns Object containing popupUrl and fallbackUrl
    */
-  private buildStartUrl(override: string | null): string {
-    const params = new URLSearchParams();
-    if (override) params.set('td_scope', override);
-    try {
-      const ret = `${location.pathname}${location.search}${location.hash}`;
-      if (ret.startsWith('/')) params.set('td_return', ret);
-    } catch {
-      /* ignore */
-    }
-    const qs = params.toString();
-    return qs ? `/api/oauth/start?${qs}` : '/api/oauth/start';
+  private buildStartUrls(override: string | null): { popupUrl: string; fallbackUrl: string } {
+    const base = '/api/oauth/start';
+    const build = (params: URLSearchParams) => {
+      const qs = params.toString();
+      return qs ? `${base}?${qs}` : base;
+    };
+
+    // Popup URL (no return param)
+    const popupParams = new URLSearchParams();
+    if (override) popupParams.set('td_scope', override);
+
+    // Fallback URL (includes return param)
+    const fallbackParams = new URLSearchParams(popupParams);
+    const ret = `${location.pathname}${location.search}${location.hash}`;
+    if (ret.startsWith('/')) fallbackParams.set('td_return', ret);
+
+    return { popupUrl: build(popupParams), fallbackUrl: build(fallbackParams) };
   }
 
   /**
