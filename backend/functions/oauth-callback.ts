@@ -133,7 +133,7 @@ export const handler: Handler = async (event) => {
     const html = `<!doctype html><html><body><script>
       ${
         storedReturnPath?.startsWith('/')
-          ? `window.location.replace(${JSON.stringify(storedReturnPath)});`
+          ? `window.location.replace(${sanitizeReturnPath(storedReturnPath)});`
           : `window.close();`
       }
     </script>OK</body></html>`;
@@ -148,3 +148,57 @@ export const handler: Handler = async (event) => {
     return { statusCode: 500, body: String(e) };
   }
 };
+
+/**
+ * Accept only a clean, same-site absolute path (leading slash), optionally
+ * with query + fragment. Reject anything else (absolute URLs, protocol-relative,
+ * control chars, suspicious encodings). Returns null if unsafe.
+ *
+ * @param p Raw candidate return path (likely from cookie)
+ */
+function sanitizeReturnPath(p: unknown): string | null {
+  if (typeof p !== 'string') return null;
+
+  // Hard size limit
+  if (p.length === 0 || p.length > 512) return null;
+
+  // Reject absolute URLs or protocol-relative or scheme-like prefixes
+  // e.g. "https://", "javascript:", "//evil.com"
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(p) || p.startsWith('//')) return null;
+
+  // Must start with a single slash (avoid "./", "../", etc.)
+  if (!p.startsWith('/')) return null;
+
+  // Fast‑fail on raw control chars
+  if (/[\0\r\n]/.test(p)) return null;
+
+  // Decode once to inspect encoded payload (may throw)
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(p);
+  } catch {
+    return null;
+  }
+
+  // Control chars after decoding?
+  if (/[\0\r\n]/.test(decoded)) return null;
+
+  // Allow only a conservative set of URL path/query/fragment safe chars.
+  // (RFC 3986 unreserved + a subset of reserved often seen in queries)
+  // Adjust if you need broader support.
+  if (
+    !/^\/[A-Za-z0-9\-._~!$&'()*+,;=:@/%]*([?][A-Za-z0-9\-._~!$&'()*+,;=:@/%]*?)?(#[A-Za-z0-9\-._~!$&'()*+,;=:@/%]*)?$/.test(
+      decoded
+    )
+  ) {
+    return null;
+  }
+
+  // Optional: enforce that it resolves under allowed top-level segments:
+  // if (!/^\/(?:$|app\/|info\/|settings(?:\/|$)|wiki\/)/.test(decoded)) return null;
+
+  // Normalize double slashes (optional):
+  // decoded = decoded.replace(/\/{2,}/g, '/');
+
+  return decoded;
+}
