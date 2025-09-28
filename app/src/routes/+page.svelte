@@ -5,6 +5,7 @@
   import googleDriveService from '$lib/services/googleDriveService';
 
   import FloatingActionButton from '$lib/ui/FloatingActionButton.svelte';
+  import LoadingSpinner from '$lib/ui/LoadingSpinner.svelte';
   import SettingsDialog from '$lib/ui/SettingsDialog.svelte';
   import UiHost, { showError, showToast } from '$lib/ui/UiHost.svelte';
   import { onMount, tick } from 'svelte';
@@ -79,7 +80,12 @@
   {:else}
     <div class="frame-wrapper">
       {#if status === 'loading'}
-        <div class="overlay">Loading file…</div>
+        <div class="overlay">
+          <div class="loading-content">
+            <LoadingSpinner size="60px" />
+            <p class="loading-text">Loading your Wiki...</p>
+          </div>
+        </div>
       {/if}
       <iframe bind:this={iframeEl} title="TiddlyWiki" class="wiki-frame"></iframe>
       {#if !hideFab}
@@ -153,10 +159,27 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.3);
-    color: #fff;
-    font-size: 1.2rem;
+    background: rgba(0, 0, 0, 0.4);
     z-index: 10;
-    backdrop-filter: blur(1px);
+    backdrop-filter: blur(2px);
+  }
+
+  .loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 2rem 2rem;
+    border-radius: 16px;
+    margin: 1rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .loading-text {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
   }
 </style>
