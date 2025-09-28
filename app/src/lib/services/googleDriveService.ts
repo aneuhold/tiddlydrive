@@ -1,5 +1,6 @@
 import googleDriveRepository from '$lib/repositories/googleDriveRepository';
 import { authService } from '$lib/services/authService';
+import hashService from '$lib/services/hashService';
 import type { SaverOptions } from '$lib/services/tiddlyWiki/types';
 import tiddlyWikiService from '$lib/services/tiddlyWikiService';
 import type { DriveFileMeta, DriveOpenState, SaveOptions } from '$lib/types';
@@ -66,8 +67,8 @@ class GoogleDriveService {
     // Download file content
     const text = await googleDriveRepository.downloadFileContent(this.currentFileId, token);
 
-    // Track the content hash for conflict detection
-    this.currentContentHash = this.generateContentHash(text);
+    // Track the content hash for conflict detection (using web worker for performance)
+    this.currentContentHash = await hashService.generateContentHash(text);
 
     iframe.srcdoc = text;
     showToast('File loaded');
@@ -180,8 +181,8 @@ class GoogleDriveService {
     try {
       await googleDriveRepository.uploadFileContent(this.currentFileId, html, token);
 
-      // Update our local content hash tracker after successful upload
-      const newHash = this.generateContentHash(html);
+      // Update our local content hash tracker after successful upload (using web worker)
+      const newHash = await hashService.generateContentHash(html);
       this.currentContentHash = newHash;
       showToast('Saved');
       return true;
@@ -222,7 +223,7 @@ class GoogleDriveService {
         googleDriveRepository.downloadFileContent(this.currentFileId, token),
         googleDriveRepository.getFileMetadata(this.currentFileId, token)
       ]);
-      const serverContentHash = this.generateContentHash(currentContent);
+      const serverContentHash = await hashService.generateContentHash(currentContent);
 
       // Check for content conflicts:
       // - If server content hash differs from our stored hash, someone else modified the file

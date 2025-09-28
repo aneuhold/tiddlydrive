@@ -1,4 +1,4 @@
-import type { GoogleAPI, GoogleOAuth2TokenResponse, GoogleTokenClient } from '$lib/types';
+import type { GoogleOAuth2TokenResponse, GoogleTokenClient } from '$lib/types';
 import type { TiddlyWiki } from './services/tiddlyWiki/types';
 
 // Minimal ambient declarations for Google Identity Services and TiddlyWiki
@@ -16,7 +16,7 @@ declare global {
       };
     };
     $tw?: TiddlyWiki;
-    gapi?: GoogleAPI;
+    gapi?: typeof gapi;
   }
 }
 export {};
