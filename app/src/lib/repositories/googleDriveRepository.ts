@@ -1,5 +1,5 @@
 import { authService } from '$lib/services/authService';
-import type { DriveFileMeta, GapiResponse, GoogleAPIClient } from '$lib/types';
+import type { DriveFileMeta } from '$lib/types';
 
 /**
  * Repository class for handling low-level Google Drive API operations.
@@ -27,7 +27,7 @@ class GoogleDriveRepository {
     this.ensureGapiToken(token);
 
     const request = () =>
-      this.getClient().request<DriveFileMeta>({
+      this.getClient().request({
         path: `/drive/v3/files/${encodeURIComponent(fileId)}`,
         method: 'GET',
         params: {
@@ -37,7 +37,7 @@ class GoogleDriveRepository {
       });
 
     try {
-      const resp: GapiResponse<DriveFileMeta> = await request();
+      const resp = await request();
       return resp.result;
     } catch (err: unknown) {
       // Attempt one silent token refresh on auth failures, then retry
@@ -64,10 +64,13 @@ class GoogleDriveRepository {
    * @returns Promise resolving to the file content as text
    */
   async downloadFileContent(fileId: string, token: string): Promise<string> {
+    const startTime = performance.now();
+    console.log(`[GoogleDriveRepository] Starting downloadFileContent for file ${fileId}`);
+
     this.ensureGapiToken(token);
 
     const request = () =>
-      this.getClient().request<string>({
+      this.getClient().request({
         path: `/drive/v3/files/${encodeURIComponent(fileId)}`,
         method: 'GET',
         params: {
@@ -77,7 +80,13 @@ class GoogleDriveRepository {
       });
 
     try {
-      const resp: GapiResponse<string> = await request();
+      const resp = await request();
+      const endTime = performance.now();
+      const duration = Math.round((endTime - startTime) * 100) / 100;
+      const contentLength = resp.body.length;
+      console.log(
+        `[GoogleDriveRepository] downloadFileContent completed in ${duration}ms (${contentLength} bytes)`
+      );
       // For media downloads, prefer the raw `.body` string
       return resp.body;
     } catch (err: unknown) {
@@ -85,7 +94,13 @@ class GoogleDriveRepository {
         const newToken = await authService.getAccessToken();
         this.ensureGapiToken(newToken);
         try {
-          const retryResp: GapiResponse<string> = await request();
+          const retryResp = await request();
+          const endTime = performance.now();
+          const duration = Math.round((endTime - startTime) * 100) / 100;
+          const contentLength = retryResp.body.length;
+          console.log(
+            `[GoogleDriveRepository] DOWNLOAD RETRY COMPLETE in ${duration}ms (${contentLength} bytes)`
+          );
           return retryResp.body;
         } catch (retryErr: unknown) {
           throw this.normalizeError(retryErr, 'File download');
@@ -107,7 +122,7 @@ class GoogleDriveRepository {
     this.ensureGapiToken(token);
 
     const request = () =>
-      this.getClient().request<DriveFileMeta>({
+      this.getClient().request({
         // Note: uploads use the upload endpoint implicitly when using gapi with `uploadType` param
         path: `/upload/drive/v3/files/${encodeURIComponent(fileId)}`,
         method: 'PATCH',
@@ -253,8 +268,8 @@ class GoogleDriveRepository {
    *
    * @returns The initialized `gapi.client` instance
    */
-  private getClient(): NonNullable<GoogleAPIClient> {
-    const client = window.gapi?.client;
+  private getClient() {
+    const client = gapi.client;
     if (!client) {
       throw new Error('Google API client not available');
     }
