@@ -68,7 +68,7 @@ class GoogleDriveRepository {
       const content = await this.downloadWithDirectFetch(fileId, token);
       return content;
     } catch (err: unknown) {
-      if (err instanceof Error && err.message.includes('401')) {
+      if (this.isAuthError(err)) {
         // Token expired, try to refresh
         console.log('[GoogleDriveRepository] Token expired, refreshing and retrying');
         const newToken = await authService.getAccessToken();
@@ -157,9 +157,10 @@ class GoogleDriveRepository {
   }
 
   /**
-   * Determines whether an error thrown by gapi is likely an auth error.
+   * Determines whether an error is likely an auth error.
+   * Handles both gapi.client errors and fetch() errors.
    *
-   * @param err The error thrown by the Google API client
+   * @param err The error thrown by either gapi.client or fetch()
    * @returns True if the error contains 401/403 semantics
    */
   private isAuthError(err: unknown): boolean {
@@ -170,7 +171,14 @@ class GoogleDriveRepository {
     } | null;
     const msg = (e && e.message) || '';
     const code = (e && (e.result?.error?.code ?? e.status)) ?? undefined;
-    return code === 401 || code === 403 || /unauthorized|forbidden/i.test(msg);
+
+    // Check structured error codes first (gapi errors)
+    if (code === 401 || code === 403) {
+      return true;
+    }
+
+    // Check message content for both gapi and fetch errors
+    return /unauthorized|forbidden|401|403/i.test(msg);
   }
 
   /**
