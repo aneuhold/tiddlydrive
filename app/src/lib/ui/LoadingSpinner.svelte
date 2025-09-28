@@ -17,7 +17,6 @@ Fun spinner. Created by Claude 4. Can't take credit for this one 😅
     <div class="center-circle"></div>
   </div>
 </div>
-<span class="loader"></span>
 
 <style>
   .spinner-container {
