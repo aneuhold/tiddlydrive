@@ -93,7 +93,7 @@ async function mintAccessToken(
 function mapRefreshError(e: unknown): { statusCode: number; body: string } {
   // Check if it's not the expected error type
   if (!(e instanceof OAuthRefreshError)) {
-    return { statusCode: 500, body: JSON.stringify(e) };
+    return { statusCode: 500, body: String(e) };
   }
 
   // It is, so we can access its properties. The error message is what
