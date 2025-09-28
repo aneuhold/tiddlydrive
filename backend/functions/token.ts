@@ -114,7 +114,7 @@ function mapRefreshError(e: unknown): { statusCode: number; body: string } {
       return { statusCode: 500, body: rawBody || 'OAuth client misconfigured' };
     case 'admin_policy_enforced':
     case 'org_internal':
-      return { statusCode: 403, body: rawBody || 'Access restricted by policy' };
+      return { statusCode: 405, body: rawBody || 'Access restricted by policy' };
     default:
       return { statusCode: 500, body: rawBody || 'Unknown error' };
   }
