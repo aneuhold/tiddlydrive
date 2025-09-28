@@ -1,3 +1,4 @@
+import { generateContentHash as generateContentHashSync } from '$lib/utils/hashUtils';
 import type { HashWorkerMessage, HashWorkerResponse } from '$lib/workers/hashWorker';
 import HashWorker from '$lib/workers/hashWorker?worker';
 
@@ -6,6 +7,8 @@ import HashWorker from '$lib/workers/hashWorker?worker';
  * This is particularly important for large HTML files that could cause UI freezes during hash computation.
  */
 class HashService {
+  private static readonly HASH_TIMEOUT_MS = 30000; // 30 second timeout
+
   private worker: Worker | null = null;
   private nextMessageId = 1;
   private pendingPromises = new Map<
@@ -129,24 +132,18 @@ class HashService {
           this.pendingPromises.delete(id);
           reject(new Error('Hash computation timeout'));
         }
-      }, 30000); // 30 second timeout
+      }, HashService.HASH_TIMEOUT_MS);
     });
   }
 
   /**
-   * Synchronous fallback hash computation (same algorithm as the worker)
+   * Synchronous fallback hash computation (uses shared hash utility)
    *
    * @param content The content to hash
    * @returns Promise that resolves to the hash string
    */
   private generateHashSync(content: string): Promise<string> {
-    let hash = 0;
-    for (let i = 0; i < content.length; i++) {
-      const char = content.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    return Promise.resolve(hash.toString(36));
+    return Promise.resolve(generateContentHashSync(content));
   }
 }
 

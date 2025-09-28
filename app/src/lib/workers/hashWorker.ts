@@ -3,6 +3,8 @@
  * This prevents the hash computation from blocking the main UI thread
  */
 
+import { generateContentHash } from '$lib/utils/hashUtils';
+
 /**
  * Message format sent to the worker
  */
@@ -18,22 +20,6 @@ export interface HashWorkerResponse {
   id: string;
   hash: string;
   error?: string;
-}
-
-/**
- * Generate a simple hash of content for conflict detection
- *
- * @param content The content to hash
- * @returns A hash string representation
- */
-function generateContentHash(content: string): string {
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return hash.toString(36);
 }
 
 // Handle messages from the main thread

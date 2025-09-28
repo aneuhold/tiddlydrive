@@ -178,7 +178,14 @@ class GoogleDriveRepository {
     }
 
     // Check message content for both gapi and fetch errors
-    return /unauthorized|forbidden|401|403/i.test(msg);
+    if (/unauthorized|forbidden|401|403/i.test(msg)) {
+      console.warn(
+        '[GoogleDriveRepository] Auth error detected via message parsing, not status code.',
+        { message: msg, originalError: err }
+      );
+      return true;
+    }
+    return false;
   }
 
   /**
