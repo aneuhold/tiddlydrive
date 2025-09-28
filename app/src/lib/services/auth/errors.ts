@@ -16,6 +16,27 @@ export class AuthError extends Error {
   }
 }
 
+/**
+ * Handles token response errors and throws appropriate AuthError.
+ *
+ * @param response The fetch response from /api/token
+ */
+export const handleTokenResponseError = async (response: Response): Promise<void> => {
+  if (response.status === 401) {
+    throw new AuthError(AuthErrorCode.NoSession, undefined, 401);
+  }
+
+  if (response.status === 405) {
+    const backendMessage = await response.text().catch(() => 'Unknown error');
+    const userMessage = `Access is restricted by your organization's admin policy. Please contact your administrator for assistance. (${backendMessage})`;
+    throw new AuthError(AuthErrorCode.AccessRestrictedByPolicy, userMessage, 405);
+  }
+
+  if (!response.ok) {
+    throw new AuthError(AuthErrorCode.TokenFailed, undefined, response.status);
+  }
+};
+
 /** Throws if not executing in a browser environment */
 export const assertClient = (): void => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {

@@ -5,18 +5,36 @@ import { decrypt } from './crypto-util';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 
-/**
- *
- * @param refreshToken
- * @param clientId
- * @param clientSecret
- */
+/** Access token response subset we care about */
 type TokenResponse = {
   access_token: string;
   expires_in: number;
   scope?: string;
   token_type?: string;
 };
+
+/** Shape of Google's error JSON for token endpoint that we need */
+interface GoogleErrorPayload {
+  /**
+   * Possible error messages: https://developers.google.com/identity/protocols/oauth2/web-server#authorization-errors
+   */
+  error?: string;
+  error_description?: string;
+}
+
+/** Error thrown when the refresh call fails */
+class OAuthRefreshError extends Error {
+  constructor(
+    /**
+     * Possible error messages: https://developers.google.com/identity/protocols/oauth2/web-server#authorization-errors
+     */
+    message: string,
+    public description?: string,
+    public rawBody?: string
+  ) {
+    super(message);
+  }
+}
 
 /**
  * Mint a new access token using a Google refresh token.
@@ -41,11 +59,65 @@ async function mintAccessToken(
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body
   });
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(`Refresh failed: ${resp.status} ${text}`);
+
+  // If it's all good, then return early
+  if (resp.ok) {
+    return resp.json() as Promise<TokenResponse>;
   }
-  return resp.json() as Promise<TokenResponse>;
+
+  // Try to parse and return the error details
+  const raw = await resp.text().catch(() => '');
+  let parsed: GoogleErrorPayload | undefined;
+  try {
+    parsed = JSON.parse(raw) as GoogleErrorPayload;
+  } catch {
+    // Ignore malformed JSON
+  }
+  if (parsed && parsed.error) {
+    throw new OAuthRefreshError(parsed.error, parsed.error_description, raw);
+  }
+
+  // Default if we couldn't parse it
+  throw new OAuthRefreshError(
+    'Google threw an error while trying to retrieve the refresh token.',
+    undefined,
+    raw
+  );
+}
+
+/**
+ * Map an OAuth refresh error to an HTTP response expected by the frontend.
+ *
+ * @param e Thrown error
+ */
+function mapRefreshError(e: unknown): { statusCode: number; body: string } {
+  // Check if it's not the expected error type
+  if (!(e instanceof OAuthRefreshError)) {
+    return { statusCode: 500, body: String(e) };
+  }
+
+  // It is, so we can access its properties. The error message is what
+  // gets returned by google. See the docs:
+  // https://developers.google.com/identity/protocols/oauth2/web-server#authorization-errors
+  const errorMessage = e.message;
+  const rawBody = e.rawBody || e.description;
+  switch (errorMessage) {
+    case 'invalid_grant':
+      return { statusCode: 401, body: rawBody || 'Invalid token, get new session' };
+    // Kind of a strange case, the user-agent one.
+    case 'disallowed_useragent':
+      return { statusCode: 400, body: rawBody || 'Unsupported user agent' };
+    case 'invalid_client':
+    case 'deleted_client':
+    case 'invalid_request':
+    case 'redirect_uri_mismatch':
+      return { statusCode: 500, body: rawBody || 'OAuth client misconfigured' };
+    case 'admin_policy_enforced':
+    case 'org_internal':
+      return { statusCode: 405, body: rawBody || 'Access restricted by policy' };
+    default:
+      return { statusCode: 500, body: rawBody || 'Unknown error' };
+  }
 }
 
 /**
@@ -100,6 +172,6 @@ export const handler: Handler = async (event) => {
       })
     };
   } catch (e) {
-    return { statusCode: 500, body: String(e) };
+    return mapRefreshError(e);
   }
 };

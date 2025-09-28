@@ -2,7 +2,7 @@ import { GapiClient } from './auth/GapiClient.js';
 import { OAuthPopup } from './auth/OAuthPopup.js';
 import { ScopeResolver } from './auth/ScopeResolver.js';
 import { TokenCache } from './auth/TokenCache.js';
-import { AuthError } from './auth/errors.js';
+import { AuthError, handleTokenResponseError } from './auth/errors.js';
 import { AuthErrorCode, type AccessTokenResponse } from './auth/types.js';
 
 /** Orchestrates OAuth scope handling, token minting and gapi integration */
@@ -80,8 +80,7 @@ class AuthService {
     if (this.mintInFlight) return this.mintInFlight;
     this.mintInFlight = (async () => {
       const res = await fetch('/api/token', { credentials: 'include' });
-      if (res.status === 401) throw new AuthError(AuthErrorCode.NoSession, undefined, 401);
-      if (!res.ok) throw new AuthError(AuthErrorCode.TokenFailed, undefined, res.status);
+      await handleTokenResponseError(res);
       return (await res.json()) as AccessTokenResponse;
     })();
     try {
