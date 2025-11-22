@@ -1,8 +1,6 @@
 <script>
   import { resolve } from '$app/paths';
   import GitHubIcon from '$lib/ui/GitHubIcon.svelte';
-
-  // Marketing landing page (moved under /info)
 </script>
 
 <main class="landing">
@@ -14,7 +12,7 @@
   </header>
   <section class="feature-intro">
     <p class="subtitle-1">
-      A modern, privacy‑first bridge between Google Drive and classic TiddlyWiki files.
+      A modern, privacy‑first bridge between Google Drive and single file TiddlyWikis.
     </p>
     <ul class="feature-list">
       <li>
