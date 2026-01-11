@@ -16,7 +16,7 @@ Why this design
   - Attributes: `HttpOnly; SameSite=Lax; Path=/; Max-Age=600` and `Secure` only on HTTPS.
   - Rationale: Must be included on the top-level cross-site redirect back from Google to the callback.
 - `td2_rt`: encrypted refresh token (`v1.iv.ciphertext.tag` in base64url).
-  - Attributes: `HttpOnly; SameSite=Strict; Path=/api/; Max-Age=2592000` (~30 days) and `Secure` only on HTTPS.
+  - Attributes: `HttpOnly; SameSite=Strict; Path=/api/; Max-Age=31536000` (~365 days) and `Secure` only on HTTPS.
   - Rationale: Only sent on first‑party requests to our API; not sent on cross-site navigation.
 
 ## Security notes
@@ -58,7 +58,7 @@ sequenceDiagram
   Callback->>Callback: Read td2_oauth, validate state, exchange code + verifier
   Callback->>GoogleToken: POST /token (authorization_code)
   GoogleToken-->>Callback: refresh_token (+ access_token)
-  Callback-->>App: Set-Cookie td2_rt=<enc>, Path=/api/, HttpOnly, SameSite=Strict, Max-Age=30d<br/>Clear td2_oauth, close popup
+  Callback-->>App: Set-Cookie td2_rt=<enc>, Path=/api/, HttpOnly, SameSite=Strict, Max-Age=365d<br/>Clear td2_oauth, close popup
 
   App->>Token: GET /api/token (retry)
   Token->>Token: Decrypt td2_rt to refresh_token

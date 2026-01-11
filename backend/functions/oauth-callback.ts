@@ -7,6 +7,7 @@ import { encrypt } from './crypto-util';
 import { parseTempCookie } from './oauth-shared';
 
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const REFRESH_EXPIRY_S = 60 * 60 * 24 * 365; // 365 days
 
 type TokenResponse = {
   access_token?: string;
@@ -122,8 +123,8 @@ export const handler: Handler = async (event) => {
     const host = event.headers['host'] || event.headers['Host'] || '';
     const isHttps = xfProto === 'https' || host.endsWith(':443');
     const secureAttr = isHttps ? '; Secure' : '';
-    // 30 days, Lax, scoped to /api/
-    const rtCookie = `td2_rt=${enc}; Path=/api/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`;
+    // 365 days, Lax, scoped to /api/
+    const rtCookie = `td2_rt=${enc}; Path=/api/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=${REFRESH_EXPIRY_S}`;
     // Clear the oauth helper cookie (Path=/ to match where it was set)
     const clearOauthCookie = `td2_oauth=; Path=/; HttpOnly${secureAttr}; SameSite=Lax; Max-Age=0`;
 

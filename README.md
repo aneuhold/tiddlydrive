@@ -83,6 +83,14 @@ The app adds only a small gear icon to your TiddlyWiki, keeping the interface cl
   - `userinfo.email` and `userinfo.profile` - Required for marketplace publishing only
 - Offline fallback for network interruptions
 
+## ❓ FAQ
+
+### Why does Tiddly Drive 2 ask me to authorize it again after a year?
+
+It is a bit of an arbitrary choice, but an expiry needs to be set on refresh tokens for security purposes. You'll just need to click authorize one more time to continue for another year. ❤️
+
+If you feel this is too long, please feel free to submit an issue request! I'm not sure how folks are using Tiddly Drive 2 in this area 😅. A feature may be able to be added to configure this time.
+
 ## 🔧 Development
 
 See the [development guide](./docs/development.md) for setup and testing instructions.

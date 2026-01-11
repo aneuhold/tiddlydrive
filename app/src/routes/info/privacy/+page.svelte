@@ -12,7 +12,7 @@
       <strong>Summary:</strong> Tiddly Drive 2 runs entirely in your browser with a stateless backend
       for token refresh only. It never uploads, proxies, or stores your TiddlyWiki content on any server
       operated by this project. The backend exists solely to securely refresh your authentication tokens,
-      allowing indefinite sessions without popup interruptions. The only remote services contacted are
+      allowing year-long sessions without popup interruptions. The only remote services contacted are
       Google APIs needed to open and save the file you explicitly select, plus optional third‑party resources
       (fonts / icons) shown in the page head.
     </p>
@@ -20,8 +20,8 @@
     <p>
       Tiddly Drive 2 includes a minimal backend service that serves one purpose only: securely
       refreshing your Google authentication tokens. This enables you to keep your TiddlyWiki open
-      indefinitely without authentication popup interruptions. The backend is completely stateless
-      and processes no user data:
+      for a maximum of 1 year without authentication popup interruptions. The backend is completely
+      stateless and processes no user data:
     </p>
     <ul>
       <li>No user content is transmitted to or stored on our servers</li>
